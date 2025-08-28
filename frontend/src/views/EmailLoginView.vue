@@ -44,7 +44,7 @@ const mainStore = useMainStore();
 
 const handleLogin = async () => {
   try {
-    const response = await axios.post('http://localhost:5000/api/login', {
+    const response = await axios.post('http://localhost:5000/api/login_email', {
       email: email.value,
       password: password.value,
     });

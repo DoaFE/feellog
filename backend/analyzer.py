@@ -7,15 +7,48 @@ from pathlib import Path
 import json
 import requests
 import time
+import cv2
 from core.analyzer.video_analyzer import BatchVideoAnalyzer
 from core.analyzer.gemini_sentiment_aggregator import GeminiSentimentAggregator
 from core.renderer.result_renderer import ResultRenderer
 from core.utils.analysis_logger import AnalysisLogger
 
+
+def record_from_webcam(duration_seconds: int, output_filename: str = "recorded_video.avi"):
+    """웹캠에서 지정된 시간 동안 비디오를 녹화하고 파일로 저장합니다."""
+    cap = cv2.VideoCapture(0)  # 0번 카메라(기본 웹캠) 열기
+    if not cap.isOpened():
+        print("오류: 웹캠을 열 수 없습니다.")
+        return None
+
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter(output_filename, fourcc, 20.0, (640, 480))
+    
+    start_time = time.time()
+    print(f"{duration_seconds}초 동안 녹화를 시작합니다...")
+    
+    while (time.time() - start_time) < duration_seconds:
+        ret, frame = cap.read()
+        if not ret:
+            print("오류: 프레임을 읽을 수 없습니다.")
+            break
+        out.write(frame)
+        cv2.imshow('Recording...', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):  # 'q'를 누르면 녹화 중지
+            break
+            
+    print("녹화가 완료되었습니다.")
+    cap.release()
+    out.release()
+    cv2.destroyAllWindows()
+    return output_filename
+
 if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--video_path', type=str, required=True, help='분석할 동영상 파일 경로를 입력하세요.')
+    parser.add_argument('--video_path', type=str, help='분석할 동영상 파일 경로를 입력하세요.')
+    parser.add_argument('--record_from_cam', type=int, help='웹캠에서 녹화할 시간(초)을 지정합니다. 이 옵션 사용 시 --video_path는 무시됩니다.')
+    parser.add_argument('--output_video_path', type=str, default="recorded_video.avi", help='녹화된 비디오 파일의 출력 경로입니다.')
     parser.add_argument('--voice_model', type=str, default="wav2vec2",
                         choices=["wav2vec2", "hubert-base", "wav2vec2_autumn"],
                         help='음성 감정 분석에 사용할 모델을 선택하세요.')
@@ -24,13 +57,23 @@ if __name__ == "__main__":
     parser.add_argument('--record_id', type=str, required=True, help='분석 대상 레코드 ID')
     parser.add_argument('--user_id', type=str, required=True, help='분석 요청 사용자 ID')
     args = parser.parse_args()
+    
+    VIDEO_FILE_PATH = None
+    if args.record_from_cam:
+        VIDEO_FILE_PATH = record_from_webcam(args.record_from_cam)
+        if VIDEO_FILE_PATH is None:
+            exit(1) # 녹화 실패 시 종료
+    elif args.video_path:
+        VIDEO_FILE_PATH = args.video_path
+    else:
+        print("오류: --video_path 또는 --record_from_cam 옵션 중 하나는 반드시 필요합니다.")
+        exit(1)
 
     current_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     detailed_log_filename = f"./logs/detailed_analysis_log_{current_timestamp}.json"
     analysis_logger = AnalysisLogger()
     analysis_logger.log_info(f"분석 시작: {datetime.now().isoformat()}", {"arguments": vars(args)})
-
-    VIDEO_FILE_PATH = args.video_path
+    
     IMAGE_MODEL_WEIGHTS = "infrastructure/models/emonet_100_2_trained.pth"
 
     GEMINI_API_KEY = None

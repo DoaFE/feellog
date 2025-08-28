@@ -66,17 +66,18 @@ export const useMainStore = defineStore('main', {
       this.loading.videoAnalysis = false;
     },
     async setChatbotPersona(personaId) {
-    try {
-      const response = await axios.post('http://localhost:5000/api/settings/persona', {
-        chatbot_id: personaId,
-      });
-      console.log('Chatbot persona set successfully:', response.data.message);
-      this.chatbotPersona = personaId;
-      return true;
-    } catch (error) {
-      console.error('Failed to set chatbot persona:', error.response?.data?.message || error.message);
-      this.error.message = '챗봇 페르소나 변경에 실패했습니다.';
-      return false;
+      try {
+        const response = await axios.post('http://localhost:5000/api/settings/persona', {
+          chatbot_id: personaId,
+        });
+        console.log('Chatbot persona set successfully:', response.data.message);
+        this.chatbotPersona = personaId;
+        return true;
+      } catch (error) {
+        console.error('Failed to set chatbot persona:', error.response?.data?.message || error.message);
+        this.error.message = '챗봇 페르소나 변경에 실패했습니다.';
+        return false;
+      }
     }
   }
 });

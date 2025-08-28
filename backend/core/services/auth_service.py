@@ -1,3 +1,5 @@
+# backend/core/services/auth_service.py
+
 import hashlib
 import os
 from datetime import datetime
@@ -29,7 +31,7 @@ class AuthService:
     def email_exists(self, email: str) -> bool:
         """주어진 이메일이 이미 존재하는지 확인합니다."""
         email_hash = hashlib.sha512(email.encode('utf-8')).hexdigest()
-        stmt = select(User).where(User.user_nickname == email_hash)
+        stmt = select(User).where(User.user_email_hash == email_hash)
         user = db_session.execute(stmt).scalar_one_or_none()
         return user is not None
         
@@ -42,10 +44,8 @@ class AuthService:
             new_user = User(
                 user_email_hash=email_hash,
                 user_nickname=nickname,
-                user_reg_type='email',
                 user_agree_privacy=agree_privacy,
                 user_agree_alarm=agree_alarm,
-                selected_chatbot_id=UUID(initial_chatbot_id)
             )
             db_session.add(new_user)
             db_session.flush()
@@ -74,7 +74,7 @@ class AuthService:
     def login(self, email: str, password: str) -> Union[UUID, None]:
         """로그인 정보를 검증하고 유저 ID를 반환합니다."""
         email_hash = hashlib.sha512(email.encode('utf-8')).hexdigest()
-        stmt = select(User).where(User.user_nickname == email_hash)
+        stmt = select(User).where(User.user_email_hash == email_hash)
         user = db_session.execute(stmt).scalar_one_or_none()
 
         if user:
@@ -93,6 +93,3 @@ class SessionService:
     def clear_session(self):
         from flask import session
         session.pop('user_id', None)
-
-
-    

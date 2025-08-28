@@ -38,7 +38,7 @@ export const useMainStore = defineStore('main', {
     async login(email, password) {
       this.error.message = null;
       try {
-        const response = await axios.post('http://localhost:5000/api/login', { email, password });
+        const response = await axios.post('http://localhost:5000/api/login_email', { email, password });
         this.isLoggedIn = true;
         this.user = response.data.user; // 백엔드에서 user 정보 반환 필요
         return true;

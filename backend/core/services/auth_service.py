@@ -45,7 +45,7 @@ class AuthService:
                 user_email_hash=email_hash,
                 user_nickname=nickname,
                 user_agree_privacy=agree_privacy,
-                user_agree_alarm=agree_alarm,
+                user_agree_alarm=agree_alarm
             )
             db_session.add(new_user)
             db_session.flush()

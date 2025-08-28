@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, SmallInteger, DateTime, ForeignKey, text
+from sqlalchemy import Column, String, Integer, SmallInteger, DateTime, ForeignKey, text, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
@@ -17,7 +17,7 @@ class Analysis(Base):
     analysis_voice_emotions_time_series_rates = Column(JSONB, nullable=False)
     analysis_face_emotions_score = Column(SmallInteger, nullable=False)
     analysis_voice_emotions_score = Column(SmallInteger, nullable=False)
-    analysis_majority_emotion = Column(String(20), nullable=False)
+    analysis_majority_emotion = Column(Text, nullable=False)
     
     record = relationship("Records", back_populates="analysis")
     reports = relationship("Report", back_populates="analysis")

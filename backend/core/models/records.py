@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, text, ForeignKey
+from sqlalchemy import Column, String, Integer, DateTime, text, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from core.models.database import Base
@@ -10,9 +10,9 @@ class Records(Base):
     record_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     record_user_id = Column(UUID(as_uuid=True), ForeignKey('user_tbl.user_id'), nullable=False)
     record_created = Column(DateTime(timezone=True), server_default=text('now()'))
-    record_video_path = Column(String, nullable=False)
+    record_video_path = Column(Text, nullable=False)
     record_seconds = Column(Integer, nullable=False)
-    record_analysis_status = Column(String(20), nullable=False)
+    record_analysis_status = Column(Text, nullable=False)
 
     user = relationship("User", back_populates="records")
     analysis = relationship("Analysis", back_populates="record", uselist=False)

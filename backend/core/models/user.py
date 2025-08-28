@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, text, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, text, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from core.models.database import Base
@@ -8,9 +8,9 @@ class User(Base):
     __tablename__ = 'user_tbl'
     
     user_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_email_hash = Column(String(128), nullable=False, unique=True)
-    user_nickname = Column(String(50), nullable=False, unique=True)
-    user_profile_image_url = Column(String)
+    user_email = Column(Text, nullable=False, unique=True)
+    user_nickname = Column(Text, nullable=False, unique=True)
+    user_profile_image_url = Column(Text)
     user_agree_privacy = Column(Boolean, nullable=False)
     user_agree_alarm = Column(Boolean, nullable=False)
     selected_chatbot_id = Column(UUID(as_uuid=True), ForeignKey('chatbot_persona_tbl.chatbot_id'), nullable=True)

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, LargeBinary, ForeignKey
+from sqlalchemy import Column, LargeBinary, ForeignKey, String, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from core.models.database import Base
@@ -9,7 +9,7 @@ class Auth(Base):
     
     auth_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey('user_tbl.user_id'), nullable=False, unique=True)
-    password_hash = Column(LargeBinary, nullable=False)
+    password_hash = Column(Text, nullable=False)
     
     user = relationship("User", back_populates="auth")
 

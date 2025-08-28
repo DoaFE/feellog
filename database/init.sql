@@ -5,16 +5,16 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS public.user_tbl
 (
     user_id uuid NOT NULL DEFAULT uuid_generate_v4(),
-    user_email_hash varchar(128) NOT NULL, -- auth_tbl과 조인을 위해 추가
-    user_nickname varchar(50) NOT NULL,
+    user_email text NOT NULL, -- auth_tbl과 조인을 위해 추가
+    user_nickname text NOT NULL,
     user_profile_image_url text,
     user_agree_privacy boolean NOT NULL,
     user_agree_alarm boolean NOT NULL,
-    selected_chatbot_id uuid, -- 사용자가 선택한 챗봇 ID (FK)
+    selected_chatbot_id text, -- 사용자가 선택한 챗봇 ID (FK)
     user_account_created timestamp with time zone NOT NULL DEFAULT now(),
     user_account_updated timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT user_tbl_pkey PRIMARY KEY (user_id),
-    CONSTRAINT user_email_hash_unique UNIQUE (user_email_hash),
+    CONSTRAINT user_email_unique UNIQUE (user_email),
     CONSTRAINT user_nickname_unique UNIQUE (user_nickname)
 );
 
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS public.auth_tbl
 (
     auth_id uuid NOT NULL DEFAULT uuid_generate_v4(),
     user_id uuid NOT NULL,
-    password_hash bytea NOT NULL,
+    password_hash text NOT NULL,
     CONSTRAINT auth_tbl_pkey PRIMARY KEY (auth_id)
 );
 
@@ -31,9 +31,9 @@ CREATE TABLE IF NOT EXISTS public.auth_tbl
 CREATE TABLE IF NOT EXISTS public.chatbot_persona_tbl
 (
     chatbot_id uuid NOT NULL DEFAULT uuid_generate_v4(),
-    chatbot_name varchar(50) NOT NULL,
-    chatbot_age varchar(20) NOT NULL,
-    chatbot_identity varchar(100) NOT NULL,
+    chatbot_name text NOT NULL,
+    chatbot_age text NOT NULL,
+    chatbot_identity text NOT NULL,
     chatbot_personality text NOT NULL,
     chatbot_speech_style text NOT NULL,
     chatbot_system_role text NOT NULL,
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS public.records_tbl
     record_created timestamp with time zone NOT NULL DEFAULT now(),
     record_video_path text NOT NULL,
     record_seconds integer NOT NULL,
-    record_analysis_status varchar(20) NOT NULL,
+    record_analysis_status text NOT NULL,
     PRIMARY KEY (record_id)
 );
 
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS public.analysis_tbl
     analysis_voice_emotions_time_series_rates jsonb NOT NULL,
     analysis_face_emotions_score smallint NOT NULL,
     analysis_voice_emotions_score smallint NOT NULL,
-    analysis_majority_emotion varchar(20) NOT NULL,
+    analysis_majority_emotion text NOT NULL,
     PRIMARY KEY (analysis_id)
 );
 

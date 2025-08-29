@@ -2,7 +2,8 @@
     import { ref, onMounted, onUpdated, watch } from 'vue';
     import { useRouter } from 'vue-router';
     import axios from 'axios';
-    import { createLucideIcon } from 'lucide-vue-next';
+    import { createLucideIcon, icons } from 'lucide-vue-next';
+    import { ArrowLeftIcon } from 'lucide-vue-next';
     import { useMainStore } from '@/stores/main';
     const mainStore = useMainStore();
 
@@ -14,7 +15,7 @@
     const error = ref(null);
 
     const refreshIcons = () => {
-        createIcons({ icons, attrs: { class: 'lucide-icon' }, nameAttr: 'data-lucide' });
+        createLucideIcon({ icons, attrs: { class: 'lucide-icon' }, nameAttr: 'data-lucide' });
     };
 
     const fetchPersonas = async () => {
@@ -73,6 +74,9 @@
             alert('페르소나 변경 중 오류가 발생했습니다.');
         }
     };
+    const goBack = () => {
+      router.push({ name: 'Settings' });
+    };
 
     onMounted(async () => {
         await mainStore.checkLoginStatus();
@@ -94,11 +98,11 @@
 
     <template>
         <div id="screen-character-settings" class="screen p-6 flex flex-col flex-grow">
-            <header class="flex items-center mb-8">
-                <button class="p-2 rounded-full hover:bg-gray-200" @click="router.go(-1)">
-                    <i data-lucide="arrow-left"></i>
-                </button>
-                <h2 class="text-xl font-semibold mx-auto">챗봇 캐릭터 설정</h2>
+            <header class="flex items-center mb-4">
+              <button class="p-2 rounded-full hover:bg-gray-700" @click="goBack">
+                <ArrowLeftIcon class="cta-icon" aria-hidden="true" />
+              </button>
+              <h2 class="text-xl font-semibold mx-auto">챗봇 캐릭터 설정</h2>
             </header>
 
             <div v-if="isLoading" class="flex-grow flex items-center justify-center text-gray-500">

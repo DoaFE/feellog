@@ -1,4 +1,5 @@
 # backend/app.py
+from collections import defaultdict
 from flask import Flask, request, jsonify, session, Blueprint
 from flask_cors import CORS
 import os
@@ -397,6 +398,126 @@ def chatbot_chat():
     except Exception as e:
         app.logger.error(f"챗봇 대화 중 에러 발생: {e}", exc_info=True)
         return jsonify({"message": "챗봇이 응답하는 데 실패했습니다."}), 500
+
+@app.route('/api/reports/latest', methods=['GET'])
+@login_required
+def get_latest_report():
+    user_id = session.get('user_id')
+    try:
+        latest_report = Report.query.filter_by(report_user_id=user_id).order_by(Report.report_created.desc()).first()
+
+        if latest_report:
+            report_data = latest_report.report_card
+            report_data['report_created'] = latest_report.report_created.strftime('%Y년 %m월 %d일')
+            report_data['report_id'] = str(latest_report.report_id)
+            return jsonify(success=True, report=report_data), 200
+        else:
+            return jsonify(success=False, message="최신 리포트가 없습니다."), 404
+    except Exception as e:
+        app.logger.error(f"Error fetching latest report for user {user_id}: {e}", exc_info=True)
+        return jsonify(success=False, message=f"최신 리포트를 가져오는 중 오류 발생: {e}"), 500
+
+
+@app.route('/api/trends/monthly', methods=['GET'])
+@login_required
+def get_monthly_trends():
+    user_id = session.get('user_id')
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+
+    if not all([year, month]):
+        return jsonify(success=False, message="년도와 월을 입력해주세요."), 400
+
+    try:
+        # 해당 월의 모든 리포트 조회
+        reports = Report.query \
+            .join(Analysis) \
+            .filter(Report.report_user_id == user_id,
+                    db_session.func.extract('year', Report.report_created) == year,
+                    db_session.func.extract('month', Report.report_created) == month) \
+            .order_by(Report.report_created.asc()) \
+            .all()
+        
+        days_with_emotions = []
+        daily_positive_scores = defaultdict(float)
+        daily_negative_scores = defaultdict(float)
+        daily_report_counts = defaultdict(int)
+        
+        total_sentiment_score = 0
+        report_count_for_summary = 0
+
+        for report in reports:
+            analysis = report.analysis
+            if not analysis:
+                continue # 분석 데이터가 없는 리포트는 스킵
+
+            report_date = report.report_created.date()
+            day_of_month = report_date.day
+
+            # 캘린더에 표시할 감정 점수
+            days_with_emotions.append({
+                "date": report_date.isoformat(),
+                "sentiment_score": analysis.analysis_overall_sentiment_score,
+                "report_id": str(report.report_id)
+            })
+            
+            # 월간 요약 계산용
+            total_sentiment_score += analysis.analysis_overall_sentiment_score
+            report_count_for_summary += 1
+
+            # 긍정/부정 트렌드 계산 (얼굴 감정 + 음성 감정 합산 평균)
+            # 주의: 실제 값은 0~1 사이의 비율이므로, 합산 시 2배까지 될 수 있음.
+            # 여기서는 평균 비율을 사용하거나, 각 감정의 강도를 합산하여 하나의 점수로 변환
+            
+            # 긍정 감정 (기쁨)
+            pos_face = analysis.analysis_face_emotions_rates.get('기쁨', 0.0)
+            pos_voice = analysis.analysis_voice_emotions_rates.get('기쁨', 0.0)
+            daily_positive_scores[day_of_month] += (pos_face + pos_voice) / 2 # 평균
+            
+            # 부정 감정 (분노, 불안, 상처, 슬픔)
+            neg_face_sum = sum(analysis.analysis_face_emotions_rates.get(e, 0.0) for e in ['분노', '불안', '상처', '슬픔'])
+            neg_voice_sum = sum(analysis.analysis_voice_emotions_rates.get(e, 0.0) for e in ['분노', '불안', '상처', '슬픔'])
+            daily_negative_scores[day_of_month] += (neg_face_sum + neg_voice_sum) / 2 # 평균
+
+            daily_report_counts[day_of_month] += 1
+        
+        # 일별 평균 계산
+        positive_trend_data = []
+        negative_trend_data = []
+        for day in range(1, 32): # 해당 월의 최대 일수
+            if day in daily_report_counts:
+                positive_trend_data.append({"day": day, "score": daily_positive_scores[day] / daily_report_counts[day]})
+                negative_trend_data.append({"day": day, "score": daily_negative_scores[day] / daily_report_counts[day]})
+            else:
+                positive_trend_data.append({"day": day, "score": 0.0}) # 데이터 없는 날은 0으로
+                negative_trend_data.append({"day": day, "score": 0.0}) # 데이터 없는 날은 0으로
+        
+        # 월간 요약 메시지 생성
+        monthly_summary = "기록된 감정 분석 결과가 없습니다."
+        if report_count_for_summary > 0:
+            avg_overall_sentiment = total_sentiment_score / report_count_for_summary
+            if avg_overall_sentiment > 70:
+                monthly_summary = "이번 달은 전반적으로 매우 긍정적이고 활기찬 감정이 가득했어요! ✨"
+            elif avg_overall_sentiment > 55:
+                monthly_summary = "이번 달은 긍정적인 감정이 우세했네요. 즐거운 순간들이 많았군요! 😊"
+            elif avg_overall_sentiment >= 45:
+                monthly_summary = "이번 달은 대체로 평온하고 중립적인 감정 상태를 유지했어요. 잔잔한 한 달이었군요. 😐"
+            else:
+                monthly_summary = "이번 달은 다소 부정적인 감정들이 나타났네요. 힘든 순간도 있었지만, 잘 이겨내셨을 거예요. 😥"
+
+
+        return jsonify(success=True, current_month_data={
+            "year": year,
+            "month": month,
+            "days_with_emotions": days_with_emotions,
+            "positive_trend": positive_trend_data,
+            "negative_trend": negative_trend_data,
+            "monthly_summary": monthly_summary
+        }), 200
+
+    except Exception as e:
+        app.logger.error(f"Error fetching monthly trends for user {user_id}, {year}-{month}: {e}", exc_info=True)
+        return jsonify(success=False, message=f"월간 트렌드를 가져오는 중 오류 발생: {e}"), 500
 
 # 24. 감정 카드를 이미지로 저장하는 API
 @api_bp.route('/report/<uuid:report_id>/image', methods=['POST'])

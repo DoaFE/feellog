@@ -1,7 +1,7 @@
 <script setup>
     import { ref, onMounted, onUpdated, computed } from 'vue';
     import { useRouter } from 'vue-router';
-    import { createLucideIcon } from 'lucide-vue-next';
+    import { createLucideIcon, icons } from 'lucide-vue-next';
     import { useMainStore } from '@/stores/main';
     const mainStore = useMainStore();
     const router = useRouter();

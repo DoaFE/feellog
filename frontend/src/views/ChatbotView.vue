@@ -2,7 +2,7 @@
     import { ref, onMounted, nextTick, watch } from 'vue';
     import { useRouter } from 'vue-router';
     import axios from 'axios';
-    import { createLucideIcon } from 'lucide-vue-next';
+    import { createLucideIcon, icons } from 'lucide-vue-next';
     import EmotionCard from '../components/EmotionCard.vue'; // EmotionCard 컴포넌트 임포트
     import { useMainStore } from '@/stores/main';
 

@@ -2,7 +2,7 @@
   import { ref, onMounted, computed, watch, nextTick } from 'vue';
   import { useRouter } from 'vue-router';
   import axios from 'axios';
-  import { createLucideIcon } from 'lucide-vue-next';
+  import { createLucideIcon, icons } from 'lucide-vue-next';
   import { useMainStore } from '@/stores/main';
 
   const mainStore = useMainStore();

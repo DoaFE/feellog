@@ -57,10 +57,11 @@ const agreeAlarm = ref(false);
 const message = ref('');
 const messageClass = ref('');
 const router = useRouter();
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost/api';
 
 const handleSignup = async () => {
   try {
-    const response = await axios.post('http://localhost:5000/api/signup_email', {
+    const response = await axios.post(`${API_URL}/signup_email`, {
       email: email.value,
       nickname: nickname.value,
       password: password.value,

@@ -65,6 +65,20 @@ export const useMainStore = defineStore('main', {
     endVideoAnalysis() {
       this.loading.videoAnalysis = false;
     },
+    async logout() {
+      try {
+        await axios.post('http://localhost:5000/api/logout');
+        this.isLoggedIn = false;
+        this.user = null;
+        alert('로그아웃 되었습니다.');
+        return true;
+      } catch (error) {
+        console.error('Logout failed:', error);
+        alert('로그아웃 중 오류가 발생했습니다.');
+        return false;
+      }
+    },
+
     async setChatbotPersona(personaId) {
       try {
         const response = await axios.post('http://localhost:5000/api/settings/persona', {

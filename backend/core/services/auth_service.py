@@ -38,6 +38,17 @@ class AuthService:
         else:
             logger.info(f"이메일이 존재하지 않습니다: {email}")
         return user is not None
+    
+    def nickname_exists(self, nickname: str) -> bool:
+        """주어진 닉네임이 이미 존재하는지 확인합니다."""
+        logger.info(f"닉네임 존재 여부 확인: {nickname}")
+        stmt = select(User).where(User.user_nickname == nickname)
+        user = db_session.execute(stmt).scalar_one_or_none()
+        if user:
+            logger.info(f"닉네임이 존재합니다: {nickname}")
+        else:
+            logger.info(f"닉네임이 존재하지 않습니다: {nickname}")
+        return user is not None
         
     def create_user_with_auth(self, email: str, password: str, nickname: str, agree_privacy: bool, agree_alarm: bool) -> User:
         """사용자와 인증 정보를 함께 생성하고 DB에 저장합니다."""

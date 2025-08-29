@@ -1,8 +1,15 @@
-from sqlalchemy import Column, ForeignKey, DateTime, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, DateTime, text, ForeignKey
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
 from core.models.database import Base
 import uuid
+from typing import TYPE_CHECKING
+
+# 순환 참조 방지를 위해 TYPE_CHECKING 블록 사용
+if TYPE_CHECKING:
+    from .user import User
+    from .chatbot_persona import ChatbotPersona
+    from .message import Message # Message 추가
 
 class ChatSession(Base):
     __tablename__ = 'chat_session_tbl'
@@ -13,8 +20,9 @@ class ChatSession(Base):
     chat_created = Column(DateTime(timezone=True), server_default=text('now()'))
 
     user = relationship("User", back_populates="chat_sessions")
-    chatbot_persona = relationship("ChatbotPersona", back_populates="chat_sessions")
-    messages = relationship("Message", back_populates="chat_session", cascade="all, delete-orphan")
+    chatbot = relationship("ChatbotPersona", back_populates="chat_sessions")
+    # messages 관계 추가
+    messages = relationship("Message", back_populates="chat_session")
 
     def __repr__(self):
-        return f"<ChatSession(session_id='{self.chat_session_id}')>"
+        return f"<ChatSession(id='{self.chat_session_id}', user_id='{self.chat_user_id}')>"

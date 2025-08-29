@@ -4,6 +4,14 @@ from sqlalchemy.dialects.postgresql import UUID
 from core.models.database import Base
 import uuid
 
+# relationship을 위해 import 추가
+from .chatbot_persona import ChatbotPersona
+from .auth import Auth
+from .chat_session import ChatSession
+from .message import Message
+from .records import Records
+from .report import Report
+
 class User(Base):
     __tablename__ = 'user_tbl'
     

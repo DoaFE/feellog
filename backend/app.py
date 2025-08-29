@@ -16,6 +16,7 @@ import subprocess
 import base64
 import io
 from PIL import Image
+from sqlalchemy import func # SQLAlchemy func 임포트
 
 from core.models.database import db_session
 from core.models.user import User
@@ -102,6 +103,10 @@ def signup():
         if auth_service.email_exists(email):
             app.logger.warning(f"회원가입 실패: 이미 존재하는 이메일입니다. ({email})")
             return jsonify({"message": "이미 존재하는 이메일입니다."}), 409
+        
+        if auth_service.nickname_exists(nickname):
+            app.logger.warning(f"회원가입 실패: 이미 존재하는 닉네임입니다. ({nickname})")
+            return jsonify({"message": "이미 존재하는 닉네임입니다."}), 409
 
         user = auth_service.create_user_with_auth(email, password, nickname, agree_privacy, agree_alarm)
         app.logger.info(f"회원가입 성공: 새로운 사용자 생성됨. user_id: {user.user_id}")
@@ -431,10 +436,10 @@ def get_monthly_trends():
     try:
         # 해당 월의 모든 리포트 조회
         reports = Report.query \
-            .join(Analysis) \
+            .outerjoin(Analysis) \
             .filter(Report.report_user_id == user_id,
-                    db_session.func.extract('year', Report.report_created) == year,
-                    db_session.func.extract('month', Report.report_created) == month) \
+                    func.extract('year', Report.report_created) == year, # db_session.func -> func
+                    func.extract('month', Report.report_created) == month) \
             .order_by(Report.report_created.asc()) \
             .all()
         
@@ -454,15 +459,20 @@ def get_monthly_trends():
             report_date = report.report_created.date()
             day_of_month = report_date.day
 
+            # === FIX START ===
+            # 전체 감정 점수를 얼굴과 음성 점수의 평균으로 계산
+            overall_sentiment_score = (analysis.analysis_face_emotions_score + analysis.analysis_voice_emotions_score) / 2
+            # === FIX END ===
+
             # 캘린더에 표시할 감정 점수
             days_with_emotions.append({
                 "date": report_date.isoformat(),
-                "sentiment_score": analysis.analysis_overall_sentiment_score,
+                "sentiment_score": overall_sentiment_score, # 수정된 변수 사용
                 "report_id": str(report.report_id)
             })
             
             # 월간 요약 계산용
-            total_sentiment_score += analysis.analysis_overall_sentiment_score
+            total_sentiment_score += overall_sentiment_score # 수정된 변수 사용
             report_count_for_summary += 1
 
             # 긍정/부정 트렌드 계산 (얼굴 감정 + 음성 감정 합산 평균)

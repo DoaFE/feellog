@@ -41,10 +41,12 @@
 </template>
 
 <script>
-import { onMounted, ref, onUnmounted } from 'vue';
+import { onMounted, ref, onUnmounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { ArrowLeftIcon } from 'lucide-vue-next';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost/api';
 
 export default {
   setup() {
@@ -58,6 +60,7 @@ export default {
     const timer = ref(0);
     const timerInterval = ref(null);
     const maxDuration = 120; // 2분 제한
+    const pollingInterval = ref(null);
 
     const goBack = () => {
       router.push({ name: 'home' });
@@ -132,6 +135,24 @@ export default {
       }
     };
 
+    const startPolling = (recordId) => {
+      console.log(`분석 상태 폴링 시작: ${recordId}`);
+      pollingInterval.value = setInterval(async () => {
+        try {
+          const response = await axios.get(`${API_URL}/analysis/status/${recordId}`, { withCredentials: true });
+          if (response.data.is_completed) {
+            console.log("분석 완료 확인. 폴링 중지.");
+            clearInterval(pollingInterval.value);
+            alert("영상 분석이 완료되었습니다. 트렌드 화면에서 결과를 확인하세요.");
+            router.push({ name: 'trends' });
+          }
+        } catch (error) {
+          console.error("분석 상태 폴링 실패:", error);
+          clearInterval(pollingInterval.value);
+        }
+      }, 5000); // 5초마다 폴링
+    };
+
     const analyzeVideo = async () => {
       if (!videoFile.value) {
         alert("분석할 영상 파일이 없습니다.");
@@ -142,22 +163,27 @@ export default {
       formData.append('video', videoFile.value);
 
       try {
-        const response = await axios.post('http://localhost:5000/api/analyze_video', formData, {
+        const response = await axios.post(`${API_URL}/analyze_video`, formData, {
           withCredentials: true,
           headers: {
             'Content-Type': 'multipart/form-data'
           }
         });
         alert(response.data.message);
-        router.push({ name: 'chatbot' }); // 분석 요청 후 챗봇 화면으로 이동
+        router.push({ name: 'home' }); // 분석 요청 후 즉시 홈 화면으로 이동
+        startPolling(response.data.record_id); // 분석 상태 폴링 시작
       } catch (error) {
         console.error("영상 분석 요청 실패:", error);
         alert("영상 분석 요청에 실패했습니다.");
       }
     };
 
-    onUnmounted(() => {
+    // 컴포넌트가 파괴되기 전에 타이머와 폴링을 정리합니다.
+    onBeforeUnmount(() => {
       clearInterval(timerInterval.value);
+      if (pollingInterval.value) {
+        clearInterval(pollingInterval.value);
+      }
       if (videoElement.value && videoElement.value.srcObject) {
         videoElement.value.srcObject.getTracks().forEach(track => track.stop());
       }
@@ -178,6 +204,9 @@ export default {
       analyzeVideo
     };
   },
+  components: {
+    ArrowLeftIcon
+  }
 };
 </script>
 <style scoped>

@@ -12,7 +12,6 @@ engine = create_engine(DATABASE_URL)
 
 # 스레드 안전한 세션 생성
 db_session = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
-
 # 모델의 기반 클래스 정의
 # 모든 SQLAlchemy 모델은 이 Base 클래스를 상속받아야 합니다.
 Base = declarative_base()

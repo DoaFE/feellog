@@ -5,13 +5,17 @@ import os
 import time
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from uuid import UUID
 from pathlib import Path
 from werkzeug.security import generate_password_hash, check_password_hash
 import hashlib
 from functools import wraps
 import subprocess
+import base64
+import io
+from PIL import Image
+
 from core.models.database import db_session
 from core.models.user import User
 from core.models.auth import Auth
@@ -22,6 +26,7 @@ from core.models.report import Report
 from core.models.image_url import ImageUrl
 from core.services.auth_service import AuthService, SessionService
 from core.services.data_service import DataService
+from core.services.chatbot_service import ChatbotService
 from core.utils.json_encoder import AlchemyEncoder, CustomJSONEncoder
 
 # 로깅 설정
@@ -55,6 +60,7 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 auth_service = AuthService()
 session_service = SessionService()
 data_service = DataService()
+chatbot_service = ChatbotService()
 
 # 로그인 데코레이터
 def login_required(f):
@@ -261,6 +267,68 @@ def get_report_detail(report_id):
     except Exception as e:
         app.logger.error(f"상세 리포트 조회 중 에러 발생: {e}", exc_info=True)
         return jsonify({"message": "데이터를 불러오는 데 실패했습니다."}), 500
+        
+# 22. 분석 진행 상태를 확인하는 API 추가
+@api_bp.route('/analysis/status/<uuid:record_id>', methods=['GET'])
+@login_required
+def get_analysis_status(record_id):
+    app.logger.info(f"분석 상태 확인 요청 접수. record_id: {record_id}")
+    user_id = session.get('user_id')
+    
+    try:
+        # report_tbl에 해당 record_id가 있는지 확인합니다.
+        report = db_session.query(Report).filter(
+            Report.report_user_id == user_id,
+            Report.report_analysis_id == db_session.query(Analysis.analysis_id).filter(
+                Analysis.analysis_record_id == record_id
+            ).scalar()
+        ).first()
+
+        if report:
+            app.logger.info(f"분석 완료 확인. record_id: {record_id}")
+            return jsonify({
+                "is_completed": True,
+                "report_id": str(report.report_id),
+                "report_card": report.report_card
+            }), 200
+        else:
+            app.logger.info(f"분석 진행 중. record_id: {record_id}")
+            return jsonify({"is_completed": False}), 200
+    except Exception as e:
+        app.logger.error(f"분석 상태 확인 중 에러 발생: {e}", exc_info=True)
+        return jsonify({"message": "분석 상태를 확인할 수 없습니다."}), 500
+
+# 23. 특정 날짜의 리포트 목록을 조회하는 API 추가
+@api_bp.route('/reports/date', methods=['GET'])
+@login_required
+def get_reports_by_date():
+    app.logger.info("날짜별 리포트 조회 요청 접수.")
+    user_id = session.get('user_id')
+    date_str = request.args.get('date')
+
+    if not date_str:
+        return jsonify({"message": "날짜를 입력해주세요."}), 400
+    
+    try:
+        query_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        reports = data_service.get_reports_by_date(user_id, query_date)
+        
+        report_list = []
+        for report in reports:
+            report_list.append({
+                "report_id": str(report.report_id),
+                "report_card": report.report_card,
+                "created_at": report.report_created
+            })
+            
+        app.logger.info(f"{query_date} 날짜 리포트 조회 성공. 총 {len(report_list)}개.")
+        return jsonify({"reports": report_list}), 200
+    except ValueError:
+        app.logger.warning("날짜 형식 오류.")
+        return jsonify({"message": "잘못된 날짜 형식입니다. 'YYYY-MM-DD' 형식으로 입력해주세요."}), 400
+    except Exception as e:
+        app.logger.error(f"날짜별 리포트 조회 중 에러 발생: {e}", exc_info=True)
+        return jsonify({"message": "데이터를 불러오는 데 실패했습니다."}), 500
 
 # 18. 로그인 상태 정보 확인 API
 @api_bp.route('/auth/status', methods=['GET'])
@@ -308,16 +376,77 @@ def chatbot_chat():
         return jsonify({"message": "메시지를 입력해주세요."}), 400
     
     try:
-        # ChatbotService를 사용하여 답변 생성
-        response_message = ChatbotService().generate_response(user_id, user_message)
-        
-        # 메시지 테이블에 기록
-        # message_tbl에는 챗봇 답변과 사용자 메시지 모두 저장 가능
-        
-        return jsonify({"message": response_message}), 200
+        # 사용자의 메시지가 "오늘 내 감정을 알려줘"인지 확인
+        if user_message.strip() == "오늘 내 감정을 알려줘":
+            latest_report = data_service.get_latest_report(user_id)
+            if latest_report:
+                report_card = latest_report.report_card
+                # 감정 카드 정보로 응답
+                return jsonify({
+                    "message": "오늘 기록된 감정 리포트입니다.",
+                    "report_card": report_card
+                }), 200
+            else:
+                return jsonify({
+                    "message": "아직 기록된 감정 리포트가 없습니다."
+                }), 200
+        else:
+            # ChatbotService를 사용하여 답변 생성
+            response_message = chatbot_service.generate_response(user_id, user_message)
+            return jsonify({"message": response_message}), 200
     except Exception as e:
-        app.logger.error(f"챗봇 대화 중 에러 발생: {e}")
+        app.logger.error(f"챗봇 대화 중 에러 발생: {e}", exc_info=True)
         return jsonify({"message": "챗봇이 응답하는 데 실패했습니다."}), 500
+
+# 24. 감정 카드를 이미지로 저장하는 API
+@api_bp.route('/report/<uuid:report_id>/image', methods=['POST'])
+@login_required
+def save_report_image(report_id):
+    app.logger.info(f"감정 카드 이미지 저장 요청 접수. report_id: {report_id}")
+    user_id = session.get('user_id')
+    data = request.get_json()
+    base64_image = data.get('base64_image')
+    
+    if not base64_image:
+        app.logger.warning("이미지 저장 실패: base64 이미지 데이터 누락.")
+        return jsonify({"message": "이미지 데이터가 없습니다."}), 400
+    
+    try:
+        report = data_service.get_report_by_id(report_id)
+        if not report or str(report.report_user_id) != user_id:
+            app.logger.warning(f"이미지 저장 실패: 리포트를 찾을 수 없거나 접근 권한이 없음. report_id: {report_id}")
+            return jsonify({"message": "리포트를 찾을 수 없거나 접근 권한이 없습니다."}), 404
+        
+        # Base64 디코딩
+        image_bytes = base64.b64decode(base64_image.split(',')[1])
+        image = Image.open(io.BytesIO(image_bytes))
+        
+        # 이미지 저장 경로 생성
+        image_dir = Path(f'./uploads/images/{user_id}')
+        image_dir.mkdir(parents=True, exist_ok=True)
+        image_path = image_dir / f'{report_id}.png'
+        
+        image.save(image_path)
+        app.logger.info(f"이미지 저장 성공. path: {image_path}")
+        
+        # 이미지 URL을 데이터베이스에 저장하는 로직을 제거함
+        # user의 요청에 따라 감정카드 이미지는 데이터베이스에 저장하지 않습니다.
+        # ImageUrl 테이블에 저장하는 로직
+        # image_url_record = ImageUrl(
+        #     image_url_report_id=report_id,
+        #     image_url_path=str(image_path)
+        # )
+        # db_session.add(image_url_record)
+        # db_session.commit()
+
+        return jsonify({
+            "message": "이미지가 성공적으로 저장되었습니다.",
+            "image_url": str(image_path)
+        }), 201
+
+    except Exception as e:
+        app.logger.error(f"감정 카드 이미지 저장 중 에러 발생: {e}", exc_info=True)
+        return jsonify({"message": "서버 오류가 발생했습니다."}), 500
 
 # 25. 챗봇 페르소나 변경 API
 @api_bp.route('/settings/persona', methods=['POST'])
@@ -334,7 +463,7 @@ def set_chatbot_persona():
         DataService().set_user_chatbot_persona(user_id, chatbot_id)
         return jsonify({"message": "챗봇 페르소나가 변경되었습니다."}), 200
     except Exception as e:
-        app.logger.error(f"챗봇 페르소나 변경 중 에러 발생: {e}")
+        app.logger.error(f"챗봇 페르소나 변경 중 에러 발생: {e}", exc_info=True)
         return jsonify({"message": "페르소나 변경에 실패했습니다."}), 500
 
 # 21. 탭바 라우트

@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 import hashlib
 from typing import Union
 from sqlalchemy import select, and_
+from sqlalchemy.sql import func # func를 import하여 날짜 함수를 사용합니다.
 
 class DataService:
 
@@ -93,3 +94,45 @@ class DataService:
     def get_chat_history(self, chat_session_id: str) -> list[Message]:
         """주어진 세션 ID에 대한 대화 기록을 가져옵니다."""
         return db_session.query(Message).filter(Message.message_chat_session_id == UUID(chat_session_id)).order_by(Message.message_created).all()
+        
+    def get_reports_by_date(self, user_id: str, query_date: datetime.date):
+        """특정 날짜의 리포트 목록을 조회합니다."""
+        return db_session.query(Report).filter(
+            Report.report_user_id == UUID(user_id),
+            func.date(Report.report_created) == query_date
+        ).order_by(Report.report_created.desc()).all()
+        
+    def save_analysis_results(self, user_id: str, record_id: str, analysis_data: dict, report_data: dict):
+        """분석 결과를 저장합니다."""
+        record = db_session.query(Records).filter_by(record_id=UUID(record_id)).first()
+        if not record:
+            raise ValueError("해당 record_id를 찾을 수 없습니다.")
+
+        # Analysis 객체 생성 및 저장
+        analysis = Analysis(
+            analysis_record_id=record.record_id,
+            analysis_face_emotions_rates=analysis_data.get('visual_analysis_overall', {}).get('distribution', {}),
+            analysis_face_emotions_time_series_rates=json.dumps(analysis_data.get('segment_analyses', [])),
+            analysis_voice_emotions_rates=analysis_data.get('audio_analysis_overall', {}).get('distribution', {}),
+            analysis_voice_emotions_time_series_rates=json.dumps(analysis_data.get('segment_analyses', [])),
+            analysis_face_emotions_score=report_data.get('card', {}).get('visual_sentiment_score'),
+            analysis_voice_emotions_score=report_data.get('card', {}).get('audio_sentiment_score'),
+            analysis_majority_emotion=report_data.get('card', {}).get('dominant_overall_emotion')
+        )
+        db_session.add(analysis)
+        db_session.flush() # analysis_id를 얻기 위해 flush
+
+        # Report 객체 생성 및 저장
+        report = Report(
+            report_user_id=UUID(user_id),
+            report_analysis_id=analysis.analysis_id,
+            report_card=report_data.get('card', {}),
+            report_detail=report_data.get('detail', {}),
+            report_summary=report_data.get('summary', {})
+        )
+        db_session.add(report)
+        db_session.commit()
+
+        # records_tbl의 상태 업데이트
+        record.record_analysis_status = 'COMPLETED'
+        db_session.commit()

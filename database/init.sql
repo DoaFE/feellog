@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.user_tbl
     user_profile_image_url text,
     user_agree_privacy boolean NOT NULL,
     user_agree_alarm boolean NOT NULL,
-    selected_chatbot_id text, -- 사용자가 선택한 챗봇 ID (FK)
+    selected_chatbot_id UUID, -- 사용자가 선택한 챗봇 ID (FK)
     user_account_created timestamp with time zone NOT NULL DEFAULT now(),
     user_account_updated timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT user_tbl_pkey PRIMARY KEY (user_id),

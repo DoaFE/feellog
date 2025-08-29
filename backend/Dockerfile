@@ -1,7 +1,7 @@
 #backend/Dockerfile
 
 # --- 1단계: 빌더(Builder) ---
-FROM python:3.9 as builder
+FROM python:3.9 AS builder
 
 # 빌드에 필요한 C 컴파일러(build-essential)와 uv 설치 도구(curl) 설치
 RUN apt-get update && apt-get install -y curl build-essential python3-dev

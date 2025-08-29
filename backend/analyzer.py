@@ -12,7 +12,7 @@ from core.analyzer.video_analyzer import BatchVideoAnalyzer
 from core.analyzer.gemini_sentiment_aggregator import GeminiSentimentAggregator
 from core.renderer.result_renderer import ResultRenderer
 from core.utils.analysis_logger import AnalysisLogger
-
+from flask import Flask
 
 def record_from_webcam(duration_seconds: int, output_filename: str = "recorded_video.avi"):
     """웹캠에서 지정된 시간 동안 비디오를 녹화하고 파일로 저장합니다."""
@@ -46,16 +46,16 @@ def record_from_webcam(duration_seconds: int, output_filename: str = "recorded_v
 if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--video_path', type=str, help='분석할 동영상 파일 경로를 입력하세요.')
+    parser.add_argument('--video_path', required=True,type=str, help='분석할 동영상 파일 경로를 입력하세요.')
     parser.add_argument('--record_from_cam', type=int, help='웹캠에서 녹화할 시간(초)을 지정합니다. 이 옵션 사용 시 --video_path는 무시됩니다.')
-    parser.add_argument('--output_video_path', type=str, default="recorded_video.avi", help='녹화된 비디오 파일의 출력 경로입니다.')
+    parser.add_argument('--output_video_path', type=str, default="recorded_video.mp4", help='녹화된 비디오 파일의 출력 경로입니다.')
     parser.add_argument('--voice_model', type=str, default="wav2vec2",
                         choices=["wav2vec2", "hubert-base", "wav2vec2_autumn"],
                         help='음성 감정 분석에 사용할 모델을 선택하세요.')
     parser.add_argument('--min_speech_segment_duration', type=float, default=5.0,
                         help='최소 발화 세그먼트 지속 시간 (초).')
-    parser.add_argument('--record_id', type=str, required=True, help='분석 대상 레코드 ID')
-    parser.add_argument('--user_id', type=str, required=True, help='분석 요청 사용자 ID')
+    parser.add_argument('--record_id', type=str, required=True, default="test_record", help='분석 대상 레코드 ID')
+    parser.add_argument('--user_id', type=str, required=True, default="test_user", help='분석 요청 사용자 ID')
     args = parser.parse_args()
     
     VIDEO_FILE_PATH = None
@@ -75,22 +75,22 @@ if __name__ == "__main__":
     analysis_logger.log_info(f"분석 시작: {datetime.now().isoformat()}", {"arguments": vars(args)})
     
     IMAGE_MODEL_WEIGHTS = "infrastructure/models/emonet_100_2_trained.pth"
-
     GEMINI_API_KEY = None
     try:
         with open(".ignore/API.json", "r") as f:
             api_info = json.load(f)
-        api_key_gemini = api_info.get("API_GEMINI")
-        if not api_key_gemini or not api_key_gemini.get('key'):
-            raise ValueError("API_GEMINI 키가 API.json에 없거나 유효하지 않습니다.")
-        GEMINI_API_KEY = api_key_gemini['key']
+        api_key_gemini = api_info.get("GEMINI_API_KEY")
+        if not api_key_gemini:
+            raise ValueError("GEMINI_API_KEY가 API.json에 없거나 유효하지 않습니다.")
+        GEMINI_API_KEY = api_key_gemini
     except FileNotFoundError:
         analysis_logger.log_error("오류: .ignore/API.json 파일을 찾을 수 없습니다. Gemini API 키를 설정해주세요.")
         exit(1)
     except (json.JSONDecodeError, ValueError) as e:
         analysis_logger.log_error(f"오류: API.json 파일 처리 중 에러 발생: {e}")
         exit(1)
-
+    
+    print("분석을 시작합니다...")
     batch_analyzer = BatchVideoAnalyzer(
         image_model_name="emonet",
         image_model_weights_path=IMAGE_MODEL_WEIGHTS,

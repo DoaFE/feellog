@@ -18,19 +18,20 @@ from core.models.model_factory import create_model
 from core.analyzer.audio_analyzer import VoiceAnalyzer # VoiceAnalyzer는 이제 세그먼트 단위 분석 담당
 from core.analyzer.speech_segmenter import SpeechSegmenter # 새로운 SpeechSegmenter 임포트
 
-class BatchVideoAnalyzer: # 클래스 이름을 BatchVideoAnalyzer로 변경
+class BatchVideoAnalyzer: 
     def __init__(self, image_model_name: str, image_model_weights_path: str, api_key: str, voice_model_name: str = "wav2vec2", min_speech_segment_duration: float = 5.0, logger: Optional[AnalysisLogger] = None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.logger = logger
         
         # 1. 이미지 감정 분석 모델 로드
         self._log_info("이미지 감정 분석 모델을 로드합니다...")
+        print("이미지 감정 분석 모델 로드 중...")
         self.image_model = create_model(model_name=image_model_name, num_classes=7, pretrained=False)
-        self.image_model.load_state_dict(torch.load(image_model_weights_path))
+        self.image_model.load_state_dict(torch.load(image_model_weights_path, map_location=self.device))
         self.image_model.to(self.device)
         self.image_model.eval()
         self._log_info("이미지 감정 분석 모델 로드 완료.")
-        
+        print("이미지 감정 분석 모델 로드 완료.")
         # 이미지 전처리 transform 정의 (EmoNet 기준)
         self.image_transform = transforms.Compose([
             transforms.Resize((256, 256)),

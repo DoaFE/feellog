@@ -46,8 +46,8 @@ setup_logging()
 app = Flask(__name__)
 CORS(app, supports_credentials=True, origins=["http://localhost", "http://localhost:5000", "http://localhost:8080"])
 app.secret_key = os.environ.get('SECRET_KEY', 'default-secret-key')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'default-api-key')
 app.json_encoder = CustomJSONEncoder
-
 # API 엔드포인트 블루프린트
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -181,7 +181,7 @@ def analyze_video():
         
         record_id = data_service.save_video_record(user_id, video_path)
         app.logger.info(f"records_tbl에 동영상 정보 저장 완료. record_id: {record_id}")
-        
+
         subprocess.Popen(["python", "analyzer.py", "--video_path", video_path, "--record_id", str(record_id), "--user_id", str(user_id)])
         app.logger.info(f"백그라운드에서 analyzer.py 실행 요청. record_id: {record_id}")
         
@@ -261,6 +261,81 @@ def get_report_detail(report_id):
     except Exception as e:
         app.logger.error(f"상세 리포트 조회 중 에러 발생: {e}", exc_info=True)
         return jsonify({"message": "데이터를 불러오는 데 실패했습니다."}), 500
+
+# 18. 로그인 상태 정보 확인 API
+@api_bp.route('/auth/status', methods=['GET'])
+def auth_status():
+    app.logger.info("인증 상태 확인 요청 접수.")
+    user_id_str = session.get('user_id')
+    is_logged_in = user_id_str is not None
+    
+    if is_logged_in:
+        try:
+            user_id = UUID(user_id_str)
+            user = data_service.get_user_by_id(user_id)
+            if user:
+                app.logger.info(f"사용자 인증 상태 확인 성공. user_id: {user_id}")
+                return jsonify({
+                    "is_logged_in": True,
+                    "user": {
+                        "user_id": str(user.user_id),
+                        "user_nickname": user.user_nickname,
+                    }
+                }), 200
+            else:
+                # Session has a user_id but user does not exist in DB
+                # This is an edge case, but good to handle
+                app.logger.warning(f"세션 유효성 검증 실패: DB에 사용자가 존재하지 않음. user_id: {user_id_str}")
+                session_service.clear_session()
+                return jsonify({"is_logged_in": False}), 200
+        except Exception as e:
+            app.logger.error(f"인증 상태 확인 중 에러 발생: {e}", exc_info=True)
+            session_service.clear_session()
+            return jsonify({"is_logged_in": False}), 200
+    else:
+        app.logger.info("사용자 인증되지 않음.")
+        return jsonify({"is_logged_in": False}), 200
+
+# 19. 챗봇 메시지 전송 및 답변 API
+@api_bp.route('/chatbot/chat', methods=['POST'])
+@login_required
+def chatbot_chat():
+    data = request.get_json()
+    user_id = session.get('user_id')
+    user_message = data.get('message')
+
+    if not user_message:
+        return jsonify({"message": "메시지를 입력해주세요."}), 400
+    
+    try:
+        # ChatbotService를 사용하여 답변 생성
+        response_message = ChatbotService().generate_response(user_id, user_message)
+        
+        # 메시지 테이블에 기록
+        # message_tbl에는 챗봇 답변과 사용자 메시지 모두 저장 가능
+        
+        return jsonify({"message": response_message}), 200
+    except Exception as e:
+        app.logger.error(f"챗봇 대화 중 에러 발생: {e}")
+        return jsonify({"message": "챗봇이 응답하는 데 실패했습니다."}), 500
+
+# 25. 챗봇 페르소나 변경 API
+@api_bp.route('/settings/persona', methods=['POST'])
+@login_required
+def set_chatbot_persona():
+    data = request.get_json()
+    user_id = session.get('user_id')
+    chatbot_id = data.get('chatbot_id')
+    
+    if not chatbot_id:
+        return jsonify({"message": "챗봇 ID가 필요합니다."}), 400
+        
+    try:
+        DataService().set_user_chatbot_persona(user_id, chatbot_id)
+        return jsonify({"message": "챗봇 페르소나가 변경되었습니다."}), 200
+    except Exception as e:
+        app.logger.error(f"챗봇 페르소나 변경 중 에러 발생: {e}")
+        return jsonify({"message": "페르소나 변경에 실패했습니다."}), 500
 
 # 21. 탭바 라우트
 @api_bp.route('/trends', methods=['GET'])

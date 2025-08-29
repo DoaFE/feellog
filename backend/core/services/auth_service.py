@@ -31,8 +31,7 @@ class AuthService:
     def email_exists(self, email: str) -> bool:
         """주어진 이메일이 이미 존재하는지 확인합니다."""
         logger.info(f"이메일 존재 여부 확인: {email}")
-        email_hash = hashlib.sha512(email.encode('utf-8')).hexdigest()
-        stmt = select(User).where(User.user_email_hash == email_hash)
+        stmt = select(User).where(User.user_email == email)
         user = db_session.execute(stmt).scalar_one_or_none()
         if user:
             logger.info(f"이메일이 존재합니다: {email}")
@@ -44,10 +43,9 @@ class AuthService:
         """사용자와 인증 정보를 함께 생성하고 DB에 저장합니다."""
         logger.info(f"사용자 생성 시작. email: {email}, nickname: {nickname}")
         try:
-            email_hash = hashlib.sha512(email.encode('utf-8')).hexdigest()
             
             new_user = User(
-                user_email_hash=email_hash,
+                user_email=email,
                 user_nickname=nickname,
                 user_agree_privacy=agree_privacy,
                 user_agree_alarm=agree_alarm
@@ -70,7 +68,7 @@ class AuthService:
         except IntegrityError:
             db_session.rollback()
             logger.warning("IntegrityError 발생. 데이터베이스 롤백.")
-            if db_session.query(User).filter_by(user_email_hash=email_hash).first():
+            if db_session.query(User).filter_by(user_email=email).first():
                 logger.warning(f"회원가입 중복 오류: 이메일 {email}")
                 raise ValueError("이미 존재하는 이메일입니다.")
             if db_session.query(User).filter_by(user_nickname=nickname).first():
@@ -85,13 +83,13 @@ class AuthService:
     def login(self, email: str, password: str) -> Union[UUID, None]:
         """로그인 정보를 검증하고 유저 ID를 반환합니다."""
         logger.info(f"로그인 검증 시작. email: {email}")
-        email_hash = hashlib.sha512(email.encode('utf-8')).hexdigest()
-        stmt = select(User).where(User.user_email_hash == email_hash)
+        stmt = select(User).where(User.user_email == email)
         user = db_session.execute(stmt).scalar_one_or_none()
         
         if user:
             logger.debug(f"사용자 발견. user_id: {user.user_id}")
-            auth = db_session.get(Auth, user.user_id)
+            auth_stmt = select(Auth).where(Auth.user_id == user.user_id)
+            auth = db_session.execute(auth_stmt).scalar_one_or_none()
             if auth:
                 # werkzeug.security를 사용하여 비밀번호 검증
                 if self._check_password(auth.password_hash, password):
@@ -102,7 +100,7 @@ class AuthService:
             else:
                 logger.warning(f"인증 정보(auth)를 찾을 수 없음. user_id: {user.user_id}")
         else:
-            logger.warning(f"사용자를 찾을 수 없음. email_hash: {email_hash}")
+            logger.warning(f"사용자를 찾을 수 없음. email: {email}")
         
         return None
 

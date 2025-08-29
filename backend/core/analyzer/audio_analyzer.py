@@ -21,19 +21,19 @@ class VoiceAnalyzer: # 클래스 이름을 VoiceAnalyzer로 유지하되, 내부
         self.feature_extractor = None
         self.voice_model = None
         model_id = ""
-
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         if voice_model_name == "wav2vec2":
             model_id = "jungjongho/wav2vec2-xlsr-korean-speech-emotion-recognition2_data_rebalance"
             self.feature_extractor = AutoFeatureExtractor.from_pretrained(model_id)
-            self.voice_model = Wav2Vec2ForSequenceClassification.from_pretrained(model_id).to("cuda")
+            self.voice_model = Wav2Vec2ForSequenceClassification.from_pretrained(model_id).to(device)
         elif voice_model_name == "hubert-base":
             model_id = "team-lucid/hubert-base-korean"
             self.feature_extractor = AutoFeatureExtractor.from_pretrained(model_id)
-            self.voice_model = HubertForSequenceClassification.from_pretrained(model_id).to("cuda")
+            self.voice_model = HubertForSequenceClassification.from_pretrained(model_id).to(device)
         elif voice_model_name == "wav2vec2_autumn":
             model_id = "inseong00/wav2vec2-large-xlsr-korean-autumn"
             self.feature_extractor = AutoFeatureExtractor.from_pretrained(model_id)
-            self.voice_model = Wav2Vec2ForSequenceClassification.from_pretrained(model_id).to("cuda")
+            self.voice_model = Wav2Vec2ForSequenceClassification.from_pretrained(model_id).to(device)
         else:
             raise ValueError(f"지원하지 않는 모델 이름입니다: {voice_model_name}")
         
@@ -106,9 +106,9 @@ class VoiceAnalyzer: # 클래스 이름을 VoiceAnalyzer로 유지하되, 내부
             waveform = torch.mean(waveform, dim=0, keepdim=True)
             
         speech_array = waveform.squeeze(0).numpy()
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        inputs = self.feature_extractor(speech_array, sampling_rate=self.target_sr, return_tensors="pt", padding=True).to(device)
 
-        inputs = self.feature_extractor(speech_array, sampling_rate=self.target_sr, return_tensors="pt", padding=True).to("cuda")
-        
         with torch.no_grad():
             logits = self.voice_model(**inputs).logits
 

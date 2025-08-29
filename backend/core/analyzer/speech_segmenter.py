@@ -2,6 +2,7 @@
 
 from faster_whisper import WhisperModel
 import time
+import torch
 from typing import List, Dict, Union, Any, Optional
 from core.utils.analysis_logger import AnalysisLogger # AnalysisLogger 임포트
 
@@ -14,9 +15,15 @@ class SpeechSegmenter:
         self.min_segment_duration = min_segment_duration
         self.logger = logger
         
-        self._log_info(f"STT 모델 (FasterWhisper, size='{model_size}') 로드 중...")
-        # device="cuda"로 고정하여 GPU 사용
-        self.stt_model = WhisperModel(model_size, device="cuda", compute_type="float16")
+        self._log_info(f"STT 모델 (FasterWhisper, size='{model_size}') 로드 중...")    
+
+        # CUDA가 사용 가능한지 확인
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if device == "cuda" :
+            self.stt_model = WhisperModel(model_size, device="cuda", compute_type="float16")
+        else :
+            self.stt_model = WhisperModel(model_size, device="cpu", compute_type="float32")
+
         self._log_info("STT 모델 로드 완료.")
         self._log_info(f"SpeechSegmenter 설정: 최소 발화 지속 시간 = {min_segment_duration}초.")
 

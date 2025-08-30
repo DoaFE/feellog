@@ -1,5 +1,6 @@
 # backend/app.py
 from collections import defaultdict
+from fileinput import filename
 from flask import Flask, request, jsonify, session, Blueprint
 from flask_cors import CORS
 import os
@@ -35,7 +36,13 @@ from core.utils.json_encoder import AlchemyEncoder, CustomJSONEncoder
 def setup_logging():
     log_file_path = Path('./logs/feellog.log')
     log_file_path.parent.mkdir(parents=True, exist_ok=True)
-    
+    date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with open(log_file_path, "a", encoding='utf-8') as f:
+            f.write(f"---- {date_str} : -------------------------------------------------------------")
+    except Exception as e:
+        print(f"Error creating log file: {e}")
+
     file_handler = logging.FileHandler(log_file_path)
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     
@@ -110,12 +117,17 @@ def signup():
 
         user = auth_service.create_user_with_auth(email, password, nickname, agree_privacy, agree_alarm)
         app.logger.info(f"회원가입 성공: 새로운 사용자 생성됨. user_id: {user.user_id}")
+        persona = data_service.get_user_chatbot_persona(user.user_id)
+        data_service.set_user_chatbot_persona(user_id=user.user_id, chatbot_id=persona.chatbot_id)
+        persona = data_service.get_user_chatbot_persona(user.user_id)
+        app.logger.info(f"챗봇 설정 성공: 새로운 챗봇이 설정되었습니다. chatbot_name: {persona.chatbot_name}")
         return jsonify({"message": "회원가입이 완료되었습니다.", "user_id": str(user.user_id)}), 201
-
+        
     except Exception as e:
         app.logger.error(f"회원가입 중 에러 발생: {e}", exc_info=True)
         return jsonify({"message": "서버 오류가 발생했습니다."}), 500
         
+
 # 8. 이메일 로그인 API
 @api_bp.route('/login_email', methods=['POST'])
 def login():
@@ -212,6 +224,9 @@ def save_analysis_results():
     user_id = data.get('user_id')
     analysis_data = data.get('analysis_data')
     report_data = data.get('report_data')
+    
+    print(f"analysis_data: {analysis_data}")
+    print(f"report_data: {report_data}")
 
     if not record_id or not user_id or not analysis_data or not report_data:
         app.logger.warning("분석 결과 저장 실패: 필수 데이터 누락.")

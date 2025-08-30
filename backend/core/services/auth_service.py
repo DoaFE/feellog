@@ -8,6 +8,7 @@ from typing import Union
 from core.models.database import db_session
 from core.models.user import User
 from core.models.auth import Auth
+from core.models.chatbot_persona import ChatbotPersona
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select, and_
 import logging
@@ -53,8 +54,8 @@ class AuthService:
     def create_user_with_auth(self, email: str, password: str, nickname: str, agree_privacy: bool, agree_alarm: bool) -> User:
         """사용자와 인증 정보를 함께 생성하고 DB에 저장합니다."""
         logger.info(f"사용자 생성 시작. email: {email}, nickname: {nickname}")
+        
         try:
-            
             new_user = User(
                 user_email=email,
                 user_nickname=nickname,

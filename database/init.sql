@@ -115,9 +115,9 @@ CREATE TABLE IF NOT EXISTS public.analysis_tbl
     analysis_face_emotions_time_series_rates jsonb NOT NULL,
     analysis_voice_emotions_rates jsonb NOT NULL,
     analysis_voice_emotions_time_series_rates jsonb NOT NULL,
-    analysis_face_emotions_score smallint NOT NULL,
-    analysis_voice_emotions_score smallint NOT NULL,
-    analysis_majority_emotion text NOT NULL,
+    analysis_face_emotions_score jsonb NOT NULL,
+    analysis_voice_emotions_score jsonb NOT NULL,
+    analysis_majority_emotion jsonb NOT NULL,
     PRIMARY KEY (analysis_id)
 );
 

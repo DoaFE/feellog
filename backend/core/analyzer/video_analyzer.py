@@ -70,7 +70,7 @@ class BatchVideoAnalyzer:
         if self.logger:
             self.logger.log_error(f"[BatchVideoAnalyzer] {message}", data)
 
-    def extract_frames(self, video_path: Path, start_sec: float = 0, end_sec: float = None, num_frames: int = 10) -> List[Image.Image]:
+    def extract_frames(self, video_path: Path, start_sec: float = 0, end_sec: float = None, num_frames: int = 3) -> List[Image.Image]:
         """
         비디오에서 지정된 시간 구간(start_sec ~ end_sec) 내 N개의 프레임을 균일한 간격으로 추출합니다.
         end_sec가 None이면, 비디오 끝까지 추출합니다.
@@ -209,7 +209,7 @@ class BatchVideoAnalyzer:
                 self._log_warning("[경고] 원본 비디오에 오디오 트랙이 없습니다. 음성 분석을 건너뜁니다.")
                 timings["overall_processing"]["full_audio_extraction_seconds"] = 0.0
                 
-                image_analysis_for_full_video = self.analyze_image_emotions(self.extract_frames(video_path, num_frames=30))
+                image_analysis_for_full_video = self.analyze_image_emotions(self.extract_frames(video_path, num_frames=3))
                 
                 return {
                     "video_file": video_path.name,
@@ -229,7 +229,7 @@ class BatchVideoAnalyzer:
             self._log_error(f"전체 오디오 추출 중 문제 발생: {e}", {"video_path": video_path_str})
             timings["overall_processing"]["full_audio_extraction_seconds"] = time.perf_counter() - full_audio_extraction_start
             
-            image_analysis_for_full_video = self.analyze_image_emotions(self.extract_frames(video_path, num_frames=30))
+            image_analysis_for_full_video = self.analyze_image_emotions(self.extract_frames(video_path, num_frames=3))
             
             return {
                 "video_file": video_path.name,
@@ -305,8 +305,8 @@ class BatchVideoAnalyzer:
             image_analysis_start = time.perf_counter()
             
             segment_duration = segment_end - segment_start
-            frames_to_extract = max(1, int(segment_duration * 10)) # 최대 초당 10프레임
-            
+            frames_to_extract = max(1, int(segment_duration * 3)) # 최대 초당 3프레임
+
             segment_frames = self.extract_frames(video_path, segment_start, segment_end, num_frames=frames_to_extract)
             segment_image_analysis = self.analyze_image_emotions(segment_frames)
             segment_timings["image_analysis_seconds"] = time.perf_counter() - image_analysis_start

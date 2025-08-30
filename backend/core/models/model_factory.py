@@ -78,6 +78,20 @@ def create_model(model_name: str, num_classes: int, pretrained: bool = True):
                 model.load_state_dict(state_dict, strict=False)
             else:
                 print(f"[경고] EmoNet 가중치 파일을 찾을 수 없습니다: {weights_path}")
+                
+    elif model_name == "hubert-base":
+        # EmoNet은 우리 데이터셋의 7개 클래스에 맞게 새로 생성
+        model = EmoNet(num_classes=num_classes, n_expressions=8)
+        if pretrained:
+            print("사전 훈련된 EmoNet 가중치를 불러옵니다 (Fine-tuning)...")
+            # 가중치 파일 경로
+            weights_path = Path("./infrastructure/models/weights/emonet_8.pth")
+            if weights_path.exists():
+                # 원본 모델(8개 클래스)의 가중치를 불러옴
+                state_dict = torch.load(weights_path)
+                model.load_state_dict(state_dict, strict=False)
+            else:
+                print(f"[경고] EmoNet 가중치 파일을 찾을 수 없습니다: {weights_path}")
     
     else:
         raise ValueError(f"지원하지 않는 모델입니다: {model_name}")

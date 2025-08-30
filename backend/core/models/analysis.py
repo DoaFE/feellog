@@ -14,9 +14,9 @@ class Analysis(Base):
     analysis_face_emotions_time_series_rates = Column(JSONB, nullable=False)
     analysis_voice_emotions_rates = Column(JSONB, nullable=False)
     analysis_voice_emotions_time_series_rates = Column(JSONB, nullable=False)
-    analysis_face_emotions_score = Column(SmallInteger, nullable=False)
-    analysis_voice_emotions_score = Column(SmallInteger, nullable=False)
-    analysis_majority_emotion = Column(Text, nullable=False)
+    analysis_face_emotions_score = Column(JSONB, nullable=False)
+    analysis_voice_emotions_score = Column(JSONB, nullable=False)
+    analysis_majority_emotion = Column(JSONB, nullable=False)
     
     report = relationship("Report", back_populates="analysis", uselist=False, cascade="all, delete-orphan")
     # Records 모델과의 관계 추가

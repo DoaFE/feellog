@@ -75,7 +75,7 @@
         }
     };
     const goBack = () => {
-      router.push({ name: 'Settings' });
+      router.push({ name: 'settings' });
     };
 
     onMounted(async () => {

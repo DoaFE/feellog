@@ -33,41 +33,38 @@ class DataService:
 
     def save_analysis_results(self, user_id: str, record_id: str, analysis_data: dict, report_data: dict):
         try:
-            # 1. Analysis 테이블에 결과 저장
+            # 1. Analysis 테이블에 결과 저장 (analyzer.py의 key와 일치하도록 수정)
             new_analysis = Analysis(
                 analysis_record_id=record_id,
-                # analyzer.py에서 보내는 키 값에 맞게 수정
-                analysis_face_emotions_rates=analysis_data.get('overall_face_emotion_rates'),
-                analysis_face_emotions_time_series_rates=analysis_data.get('face_emotion_time_series'),
-                analysis_voice_emotions_rates=analysis_data.get('overall_voice_emotion_rates'),
-                analysis_voice_emotions_time_series_rates=analysis_data.get('voice_emotion_time_series'),
-                analysis_face_emotions_score=analysis_data.get('final_face_score'),
-                analysis_voice_emotions_score=analysis_data.get('final_voice_score'),
-                analysis_majority_emotion=analysis_data.get('majority_emotion')
+                analysis_face_emotions_rates=analysis_data.get('overall_face_emotion_rates', {}),
+                analysis_face_emotions_time_series_rates=analysis_data.get('face_emotion_time_series', []),
+                analysis_voice_emotions_rates=analysis_data.get('overall_voice_emotion_rates', {}),
+                analysis_voice_emotions_time_series_rates=analysis_data.get('voice_emotion_time_series', []),
+                analysis_face_emotions_score=analysis_data.get('final_face_score', 0),
+                analysis_voice_emotions_score=analysis_data.get('final_voice_score', 0),
+                analysis_majority_emotion=analysis_data.get('majority_emotion', '중립')
             )
             db_session.add(new_analysis)
-            db_session.flush()  # new_analysis.analysis_id 값을 얻기 위해 flush
+            db_session.flush()
 
             # 2. Report 테이블에 결과 저장
             new_report = Report(
                 report_analysis_id=new_analysis.analysis_id,
                 report_user_id=user_id,
-                # report_data의 키 값에 맞게 수정
-                report_detail=report_data.get('detail'),
-                report_summary=report_data.get('summary'),
-                report_card=report_data.get('card')
+                report_detail=report_data.get('detail', {}),
+                report_summary=report_data.get('summary', {}),
+                report_card=report_data.get('card', {})
             )
             db_session.add(new_report)
             
-            # 3. Records 테이블의 상태를 'completed'로 업데이트
+            # 3. Records 테이블의 상태를 'completed'로 업데이트 (속성명 오타 수정)
             record = db_session.query(Records).filter(Records.record_id == record_id).first()
             if record:
                 record.record_analysis_status = 'completed'
-                # 비디오 길이도 업데이트 (옵션)
-                # record.record_seconds = analysis_data.get('video_duration', 0)
 
             db_session.commit()
             logger.info(f"분석 및 리포트 결과 저장 성공. record_id: {record_id}")
+
         except Exception as e:
             db_session.rollback()
             logger.error(f"분석 결과 저장 중 에러 발생: {e}", exc_info=True)
@@ -80,7 +77,6 @@ class DataService:
         user = self.get_user_by_id(user_id)
         if user and user.selected_chatbot_id:
             return db_session.query(ChatbotPersona).filter(ChatbotPersona.chatbot_id == user.selected_chatbot_id).first()
-        # 기본 페르소나 반환 (예: '도담이')
         return db_session.query(ChatbotPersona).filter(ChatbotPersona.chatbot_name == '도담이').first()
 
     def set_user_chatbot_persona(self, user_id: UUID, chatbot_id: UUID):
@@ -93,11 +89,11 @@ class DataService:
         return db_session.query(Report).filter(Report.report_id == report_id).first()
         
     def get_reports_by_date(self, user_id: UUID, query_date: date):
-        """특정 날짜의 모든 리포트를 조회합니다."""
+        from datetime import timedelta
         start_of_day = query_date
-        end_of_day = query_date 
+        end_of_day = start_of_day + timedelta(days=1)
         return db_session.query(Report).filter(
             Report.report_user_id == user_id,
             Report.report_created >= start_of_day,
-            Report.report_created < end_of_day.replace(day=end_of_day.day + 1)
+            Report.report_created < end_of_day
         ).order_by(Report.report_created.desc()).all()

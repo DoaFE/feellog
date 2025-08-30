@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, Text, ForeignKey, SmallInteger, text
+from sqlalchemy import Column, DateTime, text, ForeignKey, SmallInteger, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from core.models.database import Base
@@ -18,8 +18,8 @@ class Analysis(Base):
     analysis_voice_emotions_score = Column(SmallInteger, nullable=False)
     analysis_majority_emotion = Column(Text, nullable=False)
     
-    # 새로운 relationship 추가
-    report = relationship("Report", back_populates="analysis", uselist=False)
+    report = relationship("Report", back_populates="analysis", uselist=False, cascade="all, delete-orphan")
+    # Records 모델과의 관계 추가
     record = relationship("Records", back_populates="analysis", uselist=False)
 
     def __repr__(self):

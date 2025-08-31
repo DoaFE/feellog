@@ -16,7 +16,7 @@
 
       <h3 class="section-title">최근 감정 요약</h3>
       <div class="cards-wrapper">
-        <button class="scroll-btn left" @click="scrollLeft" aria-label="왼쪽으로 스크롤">&lt;</button>
+        <!--<button class="scroll-btn left" @click="scrollLeft" aria-label="왼쪽으로 스크롤">&lt;</button>-->
         <section class="cards" ref="cardsContainer" aria-label="최근 감정 요약 카드 목록">
           <article class="card">
             <div v-if="latestReport" class="bg-white p-4 rounded-lg shadow row">
@@ -39,7 +39,7 @@
             </div>
           </article>
         </section>
-        <button class="scroll-btn right" @click="scrollRight" aria-label="오른쪽으로 스크롤">&gt;</button>
+        <!--<button class="scroll-btn right" @click="scrollRight" aria-label="오른쪽으로 스크롤">&gt;</button>-->
       </div>
     </main>
   </div>

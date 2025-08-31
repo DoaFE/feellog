@@ -21,7 +21,7 @@ const routes = [
   { path: '/record', name: 'record', component: RecordView },
   { path: '/trends', name: 'trends', component: TrendsView, meta: { showNavbar: true } },
   { path: '/chatbot', name: 'chatbot', component: ChatbotView, meta: { showNavbar: true } },
-  { path: '/report', name: 'report', component: ReportView },
+  { path: '/report/:reportId', name: 'report', component: ReportView },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { showNavbar: true } },
   { path: '/settings/persona', name: 'setting-persona', component: SettingPersonaView },
   { path: '/', name: 'intro', component: IntroView }

@@ -532,10 +532,37 @@ def get_monthly_trends():
             report_date = report.report_created.date()
             day_of_month = report_date.day
 
+            # 1. 원본 report_card 데이터를 수정 가능한 dict 형태로 복사
+            report_card_data = dict(report.report_card)
+
+            # 2. HTML 생성을 위한 데이터 추출
+            date_str = f"{report.report_created.month}월 {report.report_created.day}일"
+            emotion_distribution = report_card_data.get('emotion_distribution', [])
+            
+            # 상위 2개 감정 추출 (감정이 1개만 있을 경우도 처리)
+            top_emotions = [item['emotion'] for item in emotion_distribution[:2] if 'emotion' in item]
+            emotions_str = ""
+            if len(top_emotions) > 1:
+                emotions_str = f"'{top_emotions[0]}'와(과) '{top_emotions[1]}'"
+            elif len(top_emotions) == 1:
+                emotions_str = f"'{top_emotions[0]}'"
+
+            summary_message = report_card_data.get('overall_emotion_message', '요약 메시지가 없습니다.')
+
+            # 3. HTML 문자열 생성
+            report_html_content = (
+                f"<h1>{date_str} 감정 분석 리포트</h1>"
+                f"<p>오늘의 대화에서는 주로 <strong>{emotions_str}</strong> 감정이 나타났습니다.</p>"
+                f"<br><p><strong>AI 요약:</strong> {summary_message}</p>"
+            )
+
+            # 4. 복사한 report_card_data에 report_html_content 추가
+            report_card_data["report_html_content"] = report_html_content
+
             # 프론트엔드로 전달할 리포트 정보 구성
             report_info = {
                 "report_id": str(report.report_id),
-                "report_card": report.report_card,
+                "report_card": report_card_data,
                 "created_at": report.report_created.isoformat()
             }
             reports_by_day[report_date.isoformat()].append(report_info)
@@ -578,7 +605,7 @@ def get_monthly_trends():
             if len(reports_list) == 1:
                 # 기록이 하나일 경우 긍정/부정 판단
                 report_card = reports_list[0].get('report_card', {})
-                sentiment_score = report_card.get('overall_sentiment_score', 50) 
+                sentiment_score = report_card.get('sentiment_score', 50) 
                 color = 'blue' if sentiment_score >= 50 else 'red'
             
             days_with_emotions.append({

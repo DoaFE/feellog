@@ -1,7 +1,15 @@
 <!-- app/frontend/src/App.vue -->
 <script setup>
+import { onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import MobileLayout from './components/MobileLayout.vue';
+import { useMainStore } from '@/stores/main';
+
+const mainStore = useMainStore();
+
+onMounted(() => {
+  mainStore.checkLoginStatus();
+});
 </script>
 
 <template>

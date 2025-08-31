@@ -14,11 +14,14 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "apexcharts": "^5.3.4",
     "axios": "^1.7.2",
+    "html2canvas": "^1.4.1",
     "lucide-vue-next": "^0.542.0",
     "pinia": "^3.0.3",
     "vue": "^3.5.18",
-    "vue-router": "^4.5.1"
+    "vue-router": "^4.5.1",
+    "vue3-apexcharts": "^1.8.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.31.0",

@@ -1,269 +1,257 @@
-<script setup>
-  import { ref, onMounted, computed, watch, nextTick } from 'vue';
-  import { useRouter } from 'vue-router';
-  import axios from 'axios';
-  import { createLucideIcon, icons } from 'lucide-vue-next';
-  import { useMainStore } from '@/stores/main';
-
-  const mainStore = useMainStore();
-  const router = useRouter();
-  const currentDate = ref(new Date()); // Currently displayed month
-  const monthData = ref(null); // Data from backend for the current month
-  const isLoading = ref(true);
-  const error = ref(null);
-  const selectedView = ref('monthly'); // 'monthly' or 'weekly' - for now, only monthly is implemented
-
-  const refreshIcons = () => {
-      nextTick(() => {
-          createLucideIcon({ icons, attrs: { class: 'lucide-icon' }, nameAttr: 'data-lucide' });
-      });
-  };
-
-  // --- Helper Functions ---
-  const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
-  const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay(); // 0 for Sunday, 1 for Monday...
-
-  const getSentimentColorClass = (score) => {
-      if (score >= 70) return 'bg-green-400';
-      if (score >= 55) return 'bg-green-200';
-      if (score >= 45) return 'bg-gray-200';
-      if (score >= 30) return 'bg-red-200';
-      return 'bg-red-400';
-  };
-
-  const fetchMonthlyData = async (year, month) => {
-      isLoading.value = true;
-      error.value = null;
-      if (!mainStore.isLoggedIn) {
-          error.value = '로그인이 필요한 기능입니다.';
-          isLoading.value = false;
-          return;
-      }
-
-      try {
-          const response = await axios.get(`/api/trends/monthly?year=${year}&month=${month}`);
-          if (response.data.success) {
-              monthData.value = response.data.current_month_data;
-              console.log("Fetched monthly data:", monthData.value);
-          } else {
-              error.value = response.data.message;
-          }
-      } catch (err) {
-          console.error('Error fetching monthly trends:', err);
-          error.value = '월간 트렌드 데이터를 불러오는 데 실패했습니다.';
-      } finally {
-          isLoading.value = false;
-          refreshIcons();
-      }
-  };
-
-  // --- Computed Properties ---
-  const formattedMonthYear = computed(() => {
-      return currentDate.value.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' });
-  });
-
-  const generateCalendarDays = computed(() => {
-      const year = currentDate.value.getFullYear();
-      const month = currentDate.value.getMonth(); // 0-indexed
-
-      const numDaysInMonth = getDaysInMonth(year, month);
-      const firstDay = getFirstDayOfMonth(year, month); // 0=Sun, 1=Mon...
-
-      const days = [];
-
-      // Previous month's days to fill the first row
-      const prevMonthNumDays = getDaysInMonth(year, month - 1);
-      for (let i = firstDay - 1; i >= 0; i--) {
-          days.push({ day: prevMonthNumDays - i, isCurrentMonth: false });
-      }
-
-      // Current month's days
-      const emotionsMap = new Map();
-      if (monthData.value && monthData.value.days_with_emotions) {
-          monthData.value.days_with_emotions.forEach(item => {
-              const day = new Date(item.date).getDate();
-              emotionsMap.set(day, { sentiment_score: item.sentiment_score, report_id: item.report_id });
-          });
-      }
-
-      for (let i = 1; i <= numDaysInMonth; i++) {
-          const emotionInfo = emotionsMap.get(i);
-          days.push({
-              day: i,
-              isCurrentMonth: true,
-              hasEmotion: !!emotionInfo,
-              sentimentScore: emotionInfo ? emotionInfo.sentiment_score : null,
-              reportId: emotionInfo ? emotionInfo.report_id : null,
-              isToday: new Date().toDateString() === new Date(year, month, i).toDateString() // Check if it's today
-          });
-      }
-
-      // Next month's days to fill the last row
-      const remainingCells = 42 - days.length; // Max 6 weeks in a calendar (6*7=42)
-      for (let i = 1; i <= remainingCells; i++) {
-          days.push({ day: i, isCurrentMonth: false });
-      }
-
-      return days;
-  });
-
-  // 라인 차트 포인트 계산
-  const getLineChartPoints = (trendData) => {
-      if (!trendData || trendData.length === 0) return '';
-
-      const svgWidth = 200;
-      const svgHeight = 100;
-      const padding = 10;
-      const usableWidth = svgWidth - 2 * padding;
-      const usableHeight = svgHeight - 2 * padding;
-
-      const maxScore = Math.max(...trendData.map(d => d.score)); // 최대값 (동적으로 스케일)
-      const minScore = Math.min(...trendData.map(d => d.score)); // 최소값
-
-      // score 0.0 ~ 1.0 (비율)을 SVG Y 좌표로 변환
-      const points = trendData.map((data, index) => {
-          const x = padding + (index / (trendData.length - 1)) * usableWidth;
-          // Y축은 상단이 0, 하단이 max_height
-          // score 0.0 -> Y값은 usableHeight + padding (SVG 바닥)
-          // score 1.0 -> Y값은 padding (SVG 천장)
-          const y = padding + usableHeight - ((data.score - 0) / (1.0 - 0)) * usableHeight; // 0~1.0 스케일
-          return `${x},${y}`;
-      }).join(' ');
-
-      return points;
-  };
-
-  const positiveTrendPoints = computed(() => getLineChartPoints(monthData.value?.positive_trend || []));
-  const negativeTrendPoints = computed(() => getLineChartPoints(monthData.value?.negative_trend || []));
-
-
-  // --- Event Handlers ---
-  const prevMonth = () => {
-      currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() - 1, 1);
-      fetchMonthlyData(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1);
-  };
-
-  const nextMonth = () => {
-      currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 1);
-      fetchMonthlyData(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1);
-  };
-
-  const goToReport = (reportId) => {
-      if (reportId) {
-          router.push({ name: 'report', query: { reportId: reportId } });
-      }
-  };
-
-  const toggleView = (view) => {
-      selectedView.value = view;
-      // In a real app, you'd fetch weekly data if 'weekly' is selected
-      // For now, it just changes the active button style.
-  };
-
-  // --- Lifecycle Hooks ---
-  onMounted(async () => {
-      await mainStore.checkLoginStatus();
-      if (!mainStore.isLoggedIn) {
-          router.push({ name: 'login' }); // 로그인되지 않은 경우 로그인 페이지로 리다이렉트
-          return;
-      }
-      await fetchMonthlyData(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1);
-      refreshIcons();
-  });
-
-  watch(router.currentRoute, () => {
-      refreshIcons();
-  });
-
-  </script>
-
-  <template>
-      <div id="screen-trends" class="screen screen-scrollable flex-grow">
-          <div class="p-6">
-              <header class="flex justify-center mb-6">
-                  <div class="bg-gray-200 p-1 rounded-full flex">
-                      <button
-                          :class="['px-6 py-2 rounded-full font-semibold', selectedView === 'monthly' ? 'bg-white shadow text-indigo-600' : 'text-gray-600']"
-                          @click="toggleView('monthly')"
-                      >월간</button>
-                      <button
-                          :class="['px-6 py-2 rounded-full font-semibold', selectedView === 'weekly' ? 'bg-white shadow text-indigo-600' : 'text-gray-600']"
-                          @click="toggleView('weekly')"
-                      >주간</button>
-                  </div>
-              </header>
-
-              <div v-if="isLoading" class="flex items-center justify-center h-64 text-gray-500">
-                  <i data-lucide="loader" class="animate-spin mr-2"></i> 데이터를 불러오는 중...
-              </div>
-              <div v-else-if="error" class="flex items-center justify-center h-64 text-red-500">
-                  <i data-lucide="alert-triangle" class="mr-2"></i> {{ error }}
-              </div>
-              <div v-else>
-                  <!-- 캘린더 -->
-                  <div class="bg-white p-4 rounded-2xl shadow-md mb-6">
-                      <div class="flex justify-between items-center mb-4 px-2">
-                          <button @click="prevMonth" class="text-gray-500 p-1 rounded-full hover:bg-gray-100"><i data-lucide="chevron-left"></i></button>
-                          <h3 class="font-bold text-lg cursor-pointer" @click="console.log('Month/Year picker TBD')">{{ formattedMonthYear }}</h3>
-                          <button @click="nextMonth" class="text-gray-500 p-1 rounded-full hover:bg-gray-100"><i data-lucide="chevron-right"></i></button>
-                      </div>
-                      <div class="grid grid-cols-7 text-center text-sm text-gray-500 mb-2">
-                          <div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div>
-                      </div>
-                      <div id="calendar-grid" class="grid grid-cols-7 text-center gap-1">
-                          <div
-                              v-for="(day, index) in generateCalendarDays"
-                              :key="index"
-                              :class="[
-                                  'w-8 h-8 mx-auto rounded-full flex items-center justify-center',
-                                  day.isCurrentMonth ? (day.hasEmotion ? getSentimentColorClass(day.sentimentScore) : 'text-gray-800') : 'text-gray-400',
-                                  { 'border-2 border-indigo-500 font-bold': day.isToday && day.isCurrentMonth && day.hasEmotion },
-                                  { 'cursor-pointer hover:bg-opacity-75': day.hasEmotion }
-                              ]"
-                              @click="goToReport(day.reportId)"
-                          >
-                              {{ day.day }}
-                          </div>
-                      </div>
-                  </div>
-
-                  <!-- 월간 감정 변화 추이 -->
-                  <div class="bg-white p-5 rounded-2xl shadow-md mb-6">
-                      <h3 class="font-bold text-lg mb-4">월간 감정 변화 추이</h3>
-                      <div class="w-full h-40 flex items-end justify-center relative">
-                          <svg viewBox="0 0 200 100" class="w-full h-full absolute">
-                              <!-- Baseline (0.5 for a 0-1 scale, or 50 for 0-100 scale) -->
-                              <line x1="10" y1="50" x2="190" y2="50" stroke="#ccc" stroke-width="1" stroke-dasharray="2 2"/>
-
-                              <!-- Positive Trend Line -->
-                              <polyline :points="positiveTrendPoints" fill="none" stroke="#22c55e" stroke-width="2"/>
-                              <!-- Negative Trend Line -->
-                              <polyline :points="negativeTrendPoints" fill="none" stroke="#ef4444" stroke-width="2"/>
-                          </svg>
-                          <div class="absolute bottom-1 left-0 right-0 flex justify-between px-2 text-xs text-gray-500 w-full">
-                              <span v-if="monthData && monthData.positive_trend.length > 0">{{ monthData.positive_trend[0].day }}일</span>
-                              <span v-if="monthData && monthData.positive_trend.length > 0">{{ monthData.positive_trend[monthData.positive_trend.length-1].day }}일</span>
-                          </div>
-                      </div>
-                        <div class="flex justify-around text-sm mt-4">
-                          <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-green-500 mr-2"></span>긍정 감정</div>
-                          <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-red-500 mr-2"></span>부정 감정</div>
-                      </div>
-                  </div>
-
-                  <!-- 8월 요약 -->
-                  <div class="bg-white p-5 rounded-2xl shadow-md">
-                      <h3 class="font-bold text-lg mb-2">{{ currentDate.getMonth() + 1 }}월 요약</h3>
-                      <p class="text-gray-600" id="monthly-summary">{{ monthData.monthly_summary }}</p>
-                  </div>
-              </div>
-              <div class="h-20"></div> <!-- 하단 여백 -->
-          </div>
+// TrendView.vue (Refactored)
+<template>
+  <div class="trends-view relative p-4 bg-gray-50 h-screen overflow-y-auto no-scrollbar">
+    <div class="pb-20">
+      <div class="flex justify-between items-center mb-4">
+        <button @click="changeMonth(-1)" class="text-lg font-bold p-2">&lt;</button>
+        <h2 class="text-xl font-bold">{{ year }}년 {{ month }}월</h2>
+        <button @click="changeMonth(1)" class="text-lg font-bold p-2">&gt;</button>
       </div>
-  </template>
 
-  <style scoped>
-  .screen {
-      display: flex !important; /* Force display */
+      <div class="bg-white p-4 rounded-lg shadow mb-6">
+        <p class="text-center text-gray-700">{{ monthlySummary }}</p>
+      </div>
+
+      <div class="calendar bg-white p-4 rounded-lg shadow mb-6">
+        <div class="grid grid-cols-7 text-center font-bold text-gray-600">
+          <div v-for="day in weekDays" :key="day" class="py-2">{{ day }}</div>
+        </div>
+        <div class="grid grid-cols-7 text-center">
+          <div v-for="(day, index) in calendarDays" :key="index"
+              class="py-3 relative"
+              :class="{ 'text-gray-300': !day.isCurrentMonth, 'cursor-pointer': day.emotionData }"
+              @click="handleDateClick(day)">
+
+            <span :class="{'bg-blue-500 text-white rounded-full px-2 py-1': isToday(day.date)}">
+              {{ day.day }}
+            </span>
+
+            <div v-if="day.emotionData" class="absolute bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full"
+                :class="getDotColor(day.emotionData.color)">
+            </div>
+          </div>
+        </div>
+      </div>
+      <TrendChart v-if="isDataReady" :positiveData="positiveTrend" :negativeData="negativeTrend" />
+
+      <div v-if="isModalOpen" class="absolute inset-0 bg-black bg-opacity-60 flex flex-col justify-center items-center z-50 p-4" @click.self="closeDayModal">
+        <div class="w-full max-w-sm">
+          <div
+            ref="swiperContainerRef"
+            class="flex overflow-x-auto snap-x gap-x-4 snap-mandatory no-scrollbar rounded-lg"
+            :class="{ 'is-scrolling': isScrolling }"
+            @scroll.passive="handleScroll"
+          >
+            <div
+              v-for="(report, index) in selectedDayReports"
+              :key="report.report_id"
+              class="w-80 flex-shrink-0 snap-center aspect-[2/3]"
+              :data-index="index"
+            >
+              <EmotionCard :report="report.report_card" :reportId="report.report_id" />
+            </div>
+          </div>
+
+          <div v-if="selectedDayReports.length > 1" class="fixed bottom-80 left-1/2 transform -translate-x-1/2 flex justify-center items-center space-x-4">
+            <button
+              v-for="(report, index) in selectedDayReports"
+              :key="`dot-${report.report_id}`"
+              @click="scrollToCard(index)"
+              class="w-2 h-2 rounded-full transition-colors duration-300 focus:outline-none"
+              :class="currentCardIndex === index ? 'bg-indigo-500 scale-125' : 'bg-gray-300'"
+              :aria-label="`${index + 1}번 카드로 이동`"
+            ></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, computed, nextTick } from 'vue';
+import EmotionCard from '@/components/EmotionCard.vue';
+import TrendChart from '@/components/TrendChart.vue';
+import axios from 'axios';
+
+// --- 스와이퍼 로직을 위한 ref 추가 ---
+const swiperContainerRef = ref(null);
+const currentCardIndex = ref(0);
+const isScrolling = ref(false); // 스크롤 중인지 상태를 추적하는 ref
+let observer = null;
+let scrollTimeout = null; // 스크롤 종료 감지를 위한 타임아웃 변수
+
+// ... 기존 ref, computed, 함수들 (변경 없음) ...
+const currentDate = ref(new Date());
+const monthlySummary = ref("감정 기록을 불러오는 중입니다...");
+const emotionsByDate = ref({});
+const positiveTrend = ref([]);
+const negativeTrend = ref([]);
+const isDataReady = ref(false);
+const isModalOpen = ref(false);
+const selectedDayReports = ref([]);
+
+// --- 기존 computed 및 함수들 (변경 없음) ---
+const year = computed(() => currentDate.value.getFullYear());
+const month = computed(() => currentDate.value.getMonth() + 1);
+const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
+
+const selectedDateForTitle = computed(() => {
+  if (selectedDayReports.value.length === 0) return '';
+  const date = new Date(selectedDayReports.value[0].created_at);
+  return `${date.getMonth() + 1}월 ${date.getDate()}일의 감정 기록`;
+});
+
+const fetchMonthlyTrends = async () => {
+  isDataReady.value = false;
+  try {
+    const response = await axios.get('api/trends/monthly', {
+      params: { year: year.value, month: month.value }
+    });
+    if (response.data.success) {
+      const data = response.data.current_month_data;
+      monthlySummary.value = data.monthly_summary;
+      positiveTrend.value = data.positive_trend || [];
+      negativeTrend.value = data.negative_trend || [];
+
+      emotionsByDate.value = data.days_with_emotions.reduce((acc, item) => {
+        acc[item.date] = item;
+        return acc;
+      }, {});
+      isDataReady.value = true;
+    } else {
+      monthlySummary.value = "데이터를 불러오지 못했습니다.";
+    }
+  } catch (error) {
+    console.error("Error fetching monthly trends:", error);
+    monthlySummary.value = "오류가 발생했습니다.";
+    positiveTrend.value = [];
+    negativeTrend.value = [];
   }
-  </style>
+};
+
+onMounted(fetchMonthlyTrends);
+
+const changeMonth = (delta) => {
+  currentDate.value.setMonth(currentDate.value.getMonth() + delta);
+  currentDate.value = new Date(currentDate.value);
+  fetchMonthlyTrends();
+};
+
+const calendarDays = computed(() => {
+    const firstDayOfMonth = new Date(year.value, month.value - 1, 1);
+    const lastDayOfMonth = new Date(year.value, month.value, 0);
+    const firstDayOfWeek = firstDayOfMonth.getDay();
+    const daysInMonth = lastDayOfMonth.getDate();
+    const days = [];
+    const lastDayOfPrevMonth = new Date(year.value, month.value - 1, 0).getDate();
+
+    for (let i = firstDayOfWeek; i > 0; i--) {
+        days.push({ day: lastDayOfPrevMonth - i + 1, isCurrentMonth: false, date: null, emotionData: null });
+    }
+
+    for (let i = 1; i <= daysInMonth; i++) {
+        const dateStr = `${year.value}-${String(month.value).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+        days.push({
+            date: dateStr,
+            day: i,
+            isCurrentMonth: true,
+            emotionData: emotionsByDate.value[dateStr] || null
+        });
+    }
+
+    const totalDays = days.length;
+    const remainingDays = (totalDays > 35 ? 42 : 35) - totalDays;
+    for(let i=1; i<=remainingDays; i++) {
+        days.push({ day: i, isCurrentMonth: false, date: null, emotionData: null });
+    }
+
+    return days;
+});
+
+const isToday = (dateStr) => {
+  if (!dateStr) return false;
+  const today = new Date();
+  return new Date(dateStr).toDateString() === today.toDateString();
+};
+
+const getDotColor = (color) => ({
+  'red': 'bg-red-500',
+  'blue': 'bg-blue-500',
+  'green': 'bg-green-500'
+}[color] || 'bg-gray-300');
+
+
+const handleDateClick = (day) => {
+  if (day.emotionData && day.emotionData.reports) {
+    openDayModal(day.emotionData.reports);
+  }
+};
+
+// --- [신규] Dot 클릭 시 해당 카드로 스크롤하는 함수 ---
+const scrollToCard = (index) => {
+  if (!swiperContainerRef.value) return;
+  const container = swiperContainerRef.value;
+  const cardWidth = container.offsetWidth;
+  container.scrollTo({
+    left: index * cardWidth,
+    behavior: 'smooth'
+  });
+};
+
+// --- [신규] 스크롤 이벤트를 처리하여 스와이프와 클릭 충돌을 방지하는 함수 ---
+const handleScroll = () => {
+  isScrolling.value = true;
+  clearTimeout(scrollTimeout);
+  // 스크롤이 멈춘 후 150ms 뒤에 isScrolling 상태를 false로 변경 (디바운싱)
+  scrollTimeout = setTimeout(() => {
+    isScrolling.value = false;
+  }, 150);
+};
+
+// --- [수정] 모달 열기/닫기 함수 ---
+const openDayModal = (reports) => {
+  selectedDayReports.value = reports;
+  currentCardIndex.value = 0;
+  isModalOpen.value = true;
+
+  nextTick(() => {
+    if (swiperContainerRef.value && reports.length > 1) {
+      const options = {
+        root: swiperContainerRef.value,
+        threshold: 0.5
+      };
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            currentCardIndex.value = parseInt(entry.target.dataset.index, 10);
+          }
+        });
+      }, options);
+      Array.from(swiperContainerRef.value.children).forEach(child => {
+        observer.observe(child);
+      });
+    }
+  });
+};
+
+const closeDayModal = () => {
+  isModalOpen.value = false;
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+  clearTimeout(scrollTimeout); // 모달 닫을 때 타임아웃 정리
+};
+
+</script>
+
+<style scoped>
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* [추가] 스크롤 중일 때 카드 내부의 클릭 이벤트를 비활성화 */
+.is-scrolling > div > * {
+  pointer-events: none;
+}
+</style>

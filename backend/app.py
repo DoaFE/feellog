@@ -7,7 +7,8 @@ import os
 import time
 import json
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+import collections
 from uuid import UUID
 from pathlib import Path
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -206,9 +207,12 @@ def analyze_video():
         record_id = data_service.save_video_record(user_id, video_path)
         app.logger.info(f"records_tbl에 동영상 정보 저장 완료. record_id: {record_id}")
 
-        subprocess.Popen(["python", "analyzer.py", "--video_path", video_path, "--record_id", str(record_id), "--user_id", str(user_id)])
-        app.logger.info(f"백그라운드에서 analyzer.py 실행 요청. record_id: {record_id}")
+        #subprocess.Popen(["python", "analyzer.py", "--video_path", video_path, "--record_id", str(record_id), "--user_id", str(user_id)])
+        #app.logger.info(f"백그라운드에서 analyzer.py 실행 요청. record_id: {record_id}")
         
+        subprocess.Popen(["python", "analyzer_small.py", "--video_path", video_path, "--record_id", str(record_id), "--user_id", str(user_id)])
+        app.logger.info(f"백그라운드에서 analyzer_small.py 실행 요청. record_id: {record_id}")
+
         return jsonify({"message": "영상 분석 요청이 접수되었습니다.", "record_id": str(record_id)}), 202
 
     except Exception as e:
@@ -424,19 +428,72 @@ def chatbot_chat():
 def get_latest_report():
     user_id = session.get('user_id')
     try:
-        latest_report = Report.query.filter_by(report_user_id=user_id).order_by(Report.report_created.desc()).first()
+        # 1. 1주일 전 날짜를 계산합니다.
+        seven_days_ago = datetime.now() - timedelta(days=7)
 
-        if latest_report:
-            report_data = latest_report.report_card
-            report_data['report_created'] = latest_report.report_created.strftime('%Y년 %m월 %d일')
-            report_data['report_id'] = str(latest_report.report_id)
-            return jsonify(success=True, report=report_data), 200
+        # 2. 최근 1주일간의 모든 리포트를 조회합니다.
+        reports_last_week = Report.query.filter(
+            Report.report_user_id == user_id,
+            Report.report_created >= seven_days_ago
+        ).order_by(Report.report_created.desc()).all()
+
+        if reports_last_week:
+            # 3. 1주일간의 데이터를 집계합니다.
+            total_score = 0
+            all_dominant_emotions = []
+            
+            for report in reports_last_week:
+                if report.report_summary:
+                    total_score += report.report_summary.get('overall_score', 0)
+                    dominant_emotion = report.report_summary.get('dominant_emotion')
+                    if dominant_emotion:
+                        all_dominant_emotions.append(dominant_emotion)
+            
+            if not reports_last_week:
+                 return jsonify(success=False, message="지난 1주일간의 리포트가 없습니다."), 404
+
+            # 평균 점수와 가장 빈번한 감정을 계산합니다.
+            average_score = round(total_score / len(reports_last_week))
+            if all_dominant_emotions:
+                most_common_emotion = collections.Counter(all_dominant_emotions).most_common(1)[0][0]
+            else:
+                most_common_emotion = '데이터 없음'
+
+            # 4. 집계된 요약 정보를 생성합니다.
+            aggregated_summary = {
+                'dominant_emotion': most_common_emotion,
+                'overall_score': average_score,
+                'report_count': len(reports_last_week)
+            }
+
+            # 평균 점수를 기반으로 요약 메시지를 생성합니다.
+            if average_score > 70:
+                generated_summary_message = "지난 일주일은 매우 긍정적이고 활기찬 상태였어요! ✨"
+            elif average_score > 55:
+                generated_summary_message = "지난 일주일간 긍정적인 감정을 느끼셨네요. 즐거운 순간들이 많았군요! 😊"
+            elif average_score >= 45:
+                generated_summary_message = "지난 일주일은 대체로 평온하고 중립적인 감정 상태를 유지했어요. 잔잔한 한 주였군요. 😐"
+            else:
+                generated_summary_message = "지난 일주일간 다소 부정적인 감정들이 나타났네요. 힘든 순간도 있었지만, 잘 이겨내셨을 거예요. 😥"
+            
+            # 화면에는 가장 최신 리포트의 카드를 보여줍니다.
+            latest_report_in_week = reports_last_week[0]
+            report_data = latest_report_in_week.report_card
+            report_data['report_created'] = latest_report_in_week.report_created.strftime('%Y년 %m월 %d일')
+            report_data['report_id'] = str(latest_report_in_week.report_id)
+
+            return jsonify(
+                success=True, 
+                report=report_data, # 가장 최신 리포트 카드
+                report_summary=aggregated_summary, # 1주일치 집계 요약
+                generated_summary_message=generated_summary_message
+            ), 200
         else:
-            return jsonify(success=False, message="최신 리포트가 없습니다."), 404
+            return jsonify(success=False, message="지난 1주일간의 리포트가 없습니다."), 404
+            
     except Exception as e:
         app.logger.error(f"Error fetching latest report for user {user_id}: {e}", exc_info=True)
         return jsonify(success=False, message=f"최신 리포트를 가져오는 중 오류 발생: {e}"), 500
-
 
 @app.route('/api/trends/monthly', methods=['GET'])
 @login_required
@@ -453,69 +510,95 @@ def get_monthly_trends():
         reports = Report.query \
             .outerjoin(Analysis) \
             .filter(Report.report_user_id == user_id,
-                    func.extract('year', Report.report_created) == year, # db_session.func -> func
+                    func.extract('year', Report.report_created) == year,
                     func.extract('month', Report.report_created) == month) \
             .order_by(Report.report_created.asc()) \
             .all()
         
-        days_with_emotions = []
+        reports_by_day = defaultdict(list)
         daily_positive_scores = defaultdict(float)
         daily_negative_scores = defaultdict(float)
         daily_report_counts = defaultdict(int)
-        
         total_sentiment_score = 0
         report_count_for_summary = 0
-
+        
+        app.logger.info(f"{year}-{month}의 리포트 총 {len(reports)}개 조회됨.")
+        
         for report in reports:
             analysis = report.analysis
             if not analysis:
-                continue # 분석 데이터가 없는 리포트는 스킵
-
+                continue
+            
             report_date = report.report_created.date()
             day_of_month = report_date.day
 
-            # === FIX START ===
-            # 전체 감정 점수를 얼굴과 음성 점수의 평균으로 계산
-            overall_sentiment_score = (analysis.analysis_face_emotions_score + analysis.analysis_voice_emotions_score) / 2
-            # === FIX END ===
+            # 프론트엔드로 전달할 리포트 정보 구성
+            report_info = {
+                "report_id": str(report.report_id),
+                "report_card": report.report_card,
+                "created_at": report.report_created.isoformat()
+            }
+            reports_by_day[report_date.isoformat()].append(report_info)
 
-            # 캘린더에 표시할 감정 점수
-            days_with_emotions.append({
-                "date": report_date.isoformat(),
-                "sentiment_score": overall_sentiment_score, # 수정된 변수 사용
-                "report_id": str(report.report_id)
-            })
+            # 월간 요약 및 트렌드 계산을 위한 점수 집계 (오류 방지)
+            face_score = 0.0
+            voice_score = 0.0
+
+            if isinstance(analysis.analysis_face_emotions_score, dict):
+                face_score = analysis.analysis_face_emotions_score.get('score', 0.0)
+            elif isinstance(analysis.analysis_face_emotions_score, (int, float)):
+                face_score = analysis.analysis_face_emotions_score
+
+            if isinstance(analysis.analysis_voice_emotions_score, dict):
+                voice_score = analysis.analysis_voice_emotions_score.get('score', 0.0)
+            elif isinstance(analysis.analysis_voice_emotions_score, (int, float)):
+                voice_score = analysis.analysis_voice_emotions_score
             
-            # 월간 요약 계산용
-            total_sentiment_score += overall_sentiment_score # 수정된 변수 사용
+            overall_sentiment_score = (face_score + voice_score) / 2 if (face_score + voice_score) > 0 else 0
+            
+            total_sentiment_score += overall_sentiment_score
             report_count_for_summary += 1
 
-            # 긍정/부정 트렌드 계산 (얼굴 감정 + 음성 감정 합산 평균)
-            # 주의: 실제 값은 0~1 사이의 비율이므로, 합산 시 2배까지 될 수 있음.
-            # 여기서는 평균 비율을 사용하거나, 각 감정의 강도를 합산하여 하나의 점수로 변환
+            # 긍정/부정 트렌드 계산
+            pos_face = analysis.analysis_face_emotions_rates.get('기쁨', 0.0) if analysis.analysis_face_emotions_rates else 0.0
+            pos_voice = analysis.analysis_voice_emotions_rates.get('기쁨', 0.0) if analysis.analysis_voice_emotions_rates else 0.0
+            daily_positive_scores[day_of_month] += (pos_face + pos_voice) / 2
             
-            # 긍정 감정 (기쁨)
-            pos_face = analysis.analysis_face_emotions_rates.get('기쁨', 0.0)
-            pos_voice = analysis.analysis_voice_emotions_rates.get('기쁨', 0.0)
-            daily_positive_scores[day_of_month] += (pos_face + pos_voice) / 2 # 평균
-            
-            # 부정 감정 (분노, 불안, 상처, 슬픔)
-            neg_face_sum = sum(analysis.analysis_face_emotions_rates.get(e, 0.0) for e in ['분노', '불안', '상처', '슬픔'])
-            neg_voice_sum = sum(analysis.analysis_voice_emotions_rates.get(e, 0.0) for e in ['분노', '불안', '상처', '슬픔'])
-            daily_negative_scores[day_of_month] += (neg_face_sum + neg_voice_sum) / 2 # 평균
+            neg_emotions = ['분노', '불안', '상처', '슬픔']
+            neg_face_sum = sum(analysis.analysis_face_emotions_rates.get(e, 0.0) for e in neg_emotions) if analysis.analysis_face_emotions_rates else 0.0
+            neg_voice_sum = sum(analysis.analysis_voice_emotions_rates.get(e, 0.0) for e in neg_emotions) if analysis.analysis_voice_emotions_rates else 0.0
+            daily_negative_scores[day_of_month] += (neg_face_sum + neg_voice_sum) / 2
 
             daily_report_counts[day_of_month] += 1
         
-        # 일별 평균 계산
+        # 캘린더 표시용 데이터 가공
+        days_with_emotions = []
+        for date_iso, reports_list in reports_by_day.items():
+            color = 'green' # 여러 기록이 있는 경우 기본값
+            if len(reports_list) == 1:
+                # 기록이 하나일 경우 긍정/부정 판단
+                report_card = reports_list[0].get('report_card', {})
+                sentiment_score = report_card.get('overall_sentiment_score', 50) 
+                color = 'blue' if sentiment_score >= 50 else 'red'
+            
+            days_with_emotions.append({
+                "date": date_iso,
+                "color": color,
+                "reports": reports_list
+            })
+
+        # 일별 평균 계산 (트렌드 차트용)
         positive_trend_data = []
         negative_trend_data = []
-        for day in range(1, 32): # 해당 월의 최대 일수
+        # 해당 월의 마지막 날짜 계산
+        last_day = (datetime(year, month, 1) + timedelta(days=31)).replace(day=1) - timedelta(days=1)
+        for day in range(1, last_day.day + 1):
             if day in daily_report_counts:
                 positive_trend_data.append({"day": day, "score": daily_positive_scores[day] / daily_report_counts[day]})
                 negative_trend_data.append({"day": day, "score": daily_negative_scores[day] / daily_report_counts[day]})
             else:
-                positive_trend_data.append({"day": day, "score": 0.0}) # 데이터 없는 날은 0으로
-                negative_trend_data.append({"day": day, "score": 0.0}) # 데이터 없는 날은 0으로
+                positive_trend_data.append({"day": day, "score": 0.0})
+                negative_trend_data.append({"day": day, "score": 0.0})
         
         # 월간 요약 메시지 생성
         monthly_summary = "기록된 감정 분석 결과가 없습니다."
@@ -530,7 +613,6 @@ def get_monthly_trends():
             else:
                 monthly_summary = "이번 달은 다소 부정적인 감정들이 나타났네요. 힘든 순간도 있었지만, 잘 이겨내셨을 거예요. 😥"
 
-
         return jsonify(success=True, current_month_data={
             "year": year,
             "month": month,
@@ -544,6 +626,30 @@ def get_monthly_trends():
         app.logger.error(f"Error fetching monthly trends for user {user_id}, {year}-{month}: {e}", exc_info=True)
         return jsonify(success=False, message=f"월간 트렌드를 가져오는 중 오류 발생: {e}"), 500
 
+# POST /report/<string:report_id>/image 경로의 API 생성
+@app.route('/report/<string:report_id>/image', methods=['POST'])
+def save_report_image(report_id):
+    # 요청에서 base64 이미지 데이터 가져오기
+    data = request.get_json()
+    base64_image = data.get('base64_image')
+
+    if not base64_image:
+        return jsonify({"success": False, "message": "이미지 데이터가 없습니다."}), 400
+
+    try:
+        # "data:image/png;base64," 부분 제거
+        image_data = base64.b64decode(base64_image.split(',')[1])
+
+        # 파일로 저장 (예: 'report_images' 폴더에)
+        filename = f"report_images/{report_id}.png"
+        with open(filename, "wb") as f:
+            f.write(image_data)
+
+        return jsonify({"success": True, "message": "이미지가 성공적으로 저장되었습니다."})
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+    
 # 24. 감정 카드를 이미지로 저장하는 API
 @api_bp.route('/report/<uuid:report_id>/image', methods=['POST'])
 @login_required
@@ -592,6 +698,38 @@ def save_report_image(report_id):
 
     except Exception as e:
         app.logger.error(f"감정 카드 이미지 저장 중 에러 발생: {e}", exc_info=True)
+        return jsonify({"message": "서버 오류가 발생했습니다."}), 500
+
+
+# 26. 최신 레코드 분석 상태 확인 API
+@api_bp.route('/records/latest-status', methods=['GET'])
+@login_required
+def get_latest_record_status():
+    """
+    로그인된 사용자의 가장 최근 레코드의 분석 상태를 반환합니다.
+    """
+    #app.logger.info("최신 레코드 상태 조회 요청 접수.")
+    user_id = session.get('user_id')
+
+    try:
+        # record_created 컬럼을 기준으로 내림차순 정렬하여 가장 최신 레코드를 조회
+        latest_record = db_session.query(Records).filter(
+            Records.record_user_id == user_id
+        ).order_by(Records.record_created.desc()).first()
+
+        if latest_record:
+            #app.logger.info(f"최신 레코드 상태 조회 성공. record_id: {latest_record.record_id}, status: {latest_record.record_analysis_status}")
+            return jsonify({
+                "record_id": str(latest_record.record_id),
+                "status": latest_record.record_analysis_status
+            }), 200
+        else:
+            # 사용자의 레코드가 하나도 없는 경우
+            app.logger.info(f"사용자(id: {user_id})의 분석 레코드가 존재하지 않음.")
+            return jsonify({"message": "아직 분석 기록이 없습니다."}), 200
+
+    except Exception as e:
+        app.logger.error(f"최신 레코드 상태 조회 중 에러 발생: {e}", exc_info=True)
         return jsonify({"message": "서버 오류가 발생했습니다."}), 500
 
 # 25. 챗봇 페르소나 변경 API

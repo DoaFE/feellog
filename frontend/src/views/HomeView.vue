@@ -4,7 +4,7 @@
       <header class="px pt">
         <div class="brand">Feel-Log</div>
         <div class="date">{{ currentDate }}</div>
-        <p class="subtitle">오늘 하루도 기록하며 자신을 알아가세요!</p>
+        <p class="subtitle">안녕하세요, {{ user_nickname }}님!<br />오늘 하루도 기록하며 자신을 알아가세요!</p>
       </header>
 
       <div class="cta-wrap">
@@ -15,84 +15,125 @@
       </div>
 
       <h3 class="section-title">최근 감정 요약</h3>
-
       <div class="cards-wrapper">
-        <button class="scroll-btn left" @click="scrollLeft">&lt;</button>
-        <section class="cards" ref="cards" aria-label="최근 감정 요약 카드 목록">
+        <button class="scroll-btn left" @click="scrollLeft" aria-label="왼쪽으로 스크롤">&lt;</button>
+        <section class="cards" ref="cardsContainer" aria-label="최근 감정 요약 카드 목록">
           <article class="card">
-            <div class="row">
-              <div class="emoji" aria-hidden="true">😊</div>
+            <div v-if="latestReport" class="bg-white p-4 rounded-lg shadow row">
               <div>
-                <p class="card-title">어제는 <span class="emphasis">긍정 감정</span>이 70%였어요!</p>
-                <p class="card-desc">가장 많이 나타난 감정은 '행복'이네요!</p>
+                <p class="font-bold text-gray-800 mb-2">주요 감정은 '{{ reportSummary.dominant_emotion }}'이며, 전체 점수는 {{ reportSummary.overall_score }}점입니다.</p>
+                <p class="text-sm text-gray-600">
+                  {{ generatedSummaryMessage }}
+                </p>
+                <!--
+                <div class="text-right mt-2">
+                  <router-link :to="`/report/${latestReport.report_id}`" class="text-blue-500 text-sm hover:underline">
+                    자세히 보기 &rarr;
+                  </router-link>
+                </div>
+                -->
               </div>
             </div>
-          </article>
-          <article class="card">
-            <div class="row">
-              <div class="emoji" aria-hidden="true">😌</div>
-              <div>
-                <p class="card-title">일주일 평균은 <span class="emphasis">안정</span> 상태</p>
-                <p class="card-desc">피크 스트레스 시간대는 오후 3시</p>
-              </div>
+            <div v-else class="bg-white p-4 rounded-lg shadow text-center text-gray-500">
+              <p>{{ loadingMessage }}</p>
             </div>
           </article>
         </section>
-        <button class="scroll-btn right" @click="scrollRight">&gt;</button>
+        <button class="scroll-btn right" @click="scrollRight" aria-label="오른쪽으로 스크롤">&gt;</button>
       </div>
-
     </main>
   </div>
 </template>
 
-<script>
-export default {
-  name: 'home',
-  data() {
-    return {
-      currentDate: ''
-    };
-  },
-  mounted() {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth() + 1;
-    const day = today.getDate();
-    const weekday = today.toLocaleDateString('ko-KR', { weekday: 'long' });
-    this.currentDate = `${year}년 ${month}월 ${day}일 ${weekday}`;
-  },
-  methods: {
-    scrollLeft() {
-      const container = this.$refs.cards;
-      const scrollAmount = 316; // 300px card + 16px gap
-      container.scrollTo({
-        left: container.scrollLeft - scrollAmount,
-        behavior: 'smooth'
-      });
-    },
-    scrollRight() {
-      const container = this.$refs.cards;
-      const scrollAmount = 316;
-      container.scrollTo({
-        left: container.scrollLeft + scrollAmount,
-        behavior: 'smooth'
-      });
-    }
-  }
-}
-</script>
-
 <script setup>
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { CameraIcon } from 'lucide-vue-next';
-//import api from '../services/api'; // api.js 모듈 임포트
+import { useMainStore } from '@/stores/main';
+import axios from 'axios';
+
+// --- 스크립트 통합: 기존 Options API 로직을 Composition API로 변환 ---
+
+// 1. 날짜 및 DOM 요소 관련 ref 선언
+const currentDate = ref('');
+const cardsContainer = ref(null); // template의 ref="cardsContainer"와 연결됨
+
+// 2. 스크롤 메서드 정의
+const scrollAmount = 316; // 300px card + 16px gap
+const scrollLeft = () => {
+  if (cardsContainer.value) {
+    cardsContainer.value.scrollTo({
+      left: cardsContainer.value.scrollLeft - scrollAmount,
+      behavior: 'smooth'
+    });
+  }
+};
+const scrollRight = () => {
+  if (cardsContainer.value) {
+    cardsContainer.value.scrollTo({
+      left: cardsContainer.value.scrollLeft + scrollAmount,
+      behavior: 'smooth'
+    });
+  }
+};
+
+// --- 기존 <script setup> 로직 유지 ---
+
 const router = useRouter();
+const mainStore = useMainStore();
+
+const latestReport = ref(null);
+const reportSummary = ref(null); // 객체를 받을 수 있으므로 초기값을 null로 변경
+const generatedSummaryMessage = ref('');
+const loadingMessage = ref('최신 리포트를 불러오는 중입니다...');
+const user = ref(null);
+const user_nickname = ref("게스트");
+
 const goToRecord = () => {
   router.push('/record');
 };
+
+const fetchLatestReport = async () => {
+  try {
+    const response = await axios.get('api/reports/latest');
+    //console.log("받아온 데이터:", response.data);
+    //console.log("데이터 타입:", typeof response.data);
+    if (response.data.success && response.data.report) {
+      latestReport.value = response.data.report;
+      reportSummary.value = response.data.report_summary; // 객체 자체를 저장
+      generatedSummaryMessage.value = response.data.generated_summary_message;
+    } else {
+      loadingMessage.value = "기록된 감정 리포트가 없습니다.";
+    }
+  } catch (error) {
+    console.error("Error fetching latest report:", error);
+    loadingMessage.value = "리포트를 불러오는 중 오류가 발생했습니다.";
+  }
+};
+
+// onMounted 훅으로 로직 통합
+onMounted(async () => {
+  // 날짜 설정 로직
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
+  const day = today.getDate();
+  const weekday = today.toLocaleDateString('ko-KR', { weekday: 'long' });
+  currentDate.value = `${year}년 ${month}월 ${day}일 ${weekday}`;
+
+  // 로그인 상태 확인 및 데이터 호출
+  await mainStore.checkLoginStatus();
+  if (mainStore.isLoggedIn) {
+    await fetchLatestReport();
+    user_nickname.value = mainStore.user.user_nickname;
+  } else {
+    loadingMessage.value = "로그인 후 감정 기록을 확인해보세요.";
+  }
+});
 </script>
 
 <style scoped>
+/* 스타일은 변경되지 않았으므로 생략 */
 :root{
   --indigo:#4f46e5;
   --indigo-700:#4338ca;
@@ -159,11 +200,11 @@ body{
   display: none; /* Chrome, Safari, Opera */
 }
 .card{
-  min-width:300px; max-width:300px; background:var(--card); border-radius:18px;
+  min-width:300px; max-width:360px; background:var(--card); border-radius:18px;
   box-shadow:0 8px 24px rgba(2,6,23,.08);
   padding:20px; scroll-snap-align:start;
 }
-.card .row{ display:flex; gap:14px; }
+.card .row{ display:flex; flex-direction: column; gap:14px; } /* flex-direction 변경 */
 .emoji{ font-size:32px; line-height:1; }
 .card-title{ margin:0 0 4px 0; font-weight:700; }
 .card-desc{ margin:0; color:#6b7280; }
@@ -171,7 +212,7 @@ body{
 /* Scroll buttons */
 .scroll-btn {
   position: absolute;
-  top: 80%;
+  top: 50%; /* 수직 중앙 정렬 개선 */
   transform: translateY(-50%);
   background: white;
   border: 1px solid #ccc;

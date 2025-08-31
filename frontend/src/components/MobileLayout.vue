@@ -1,8 +1,14 @@
-<!-- frontend/src/components/MobileLayout.vue -->
 <script setup>
 import { ref, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { HomeIcon, ChartLineIcon, BotIcon, SettingsIcon } from 'lucide-vue-next';
+
+// --- [추가된 부분 1] ---
+// 상태 확인 로직(Composable)과 토스트 UI 컴포넌트를 가져옵니다.
+import { storeToRefs } from 'pinia';
+import { useMainStore } from '@/stores/main';
+import ToastNotification from '@/components/ToastNotification.vue';
+// -----------------------
 
 const props = defineProps({
   showNavbar: {
@@ -14,6 +20,10 @@ const props = defineProps({
 const router = useRouter();
 const route = useRoute();
 const currentActiveLink = ref(route.name);
+const mainStore = useMainStore();
+
+// 이 코드가 실행되는 순간부터 주기적인 상태 확인이 시작.
+const { showToast, toastMessage } = storeToRefs(mainStore);
 
 watch(
   () => route.name,
@@ -34,7 +44,7 @@ const navigate = (routeName) => {
     </main>
 
     <nav v-if="showNavbar" class="absolute bottom-0 left-0 right-0 h-20 bg-white/80 backdrop-blur-sm border-t border-gray-200 flex justify-around items-center">
-        <button
+      <button
             :class="['flex flex-col items-center nav-link', currentActiveLink === 'home' ? 'text-indigo-600' : 'text-gray-500']"
             @click="navigate('home')"
         >
@@ -63,5 +73,6 @@ const navigate = (routeName) => {
             <i data-lucide="settings"></i><span class="text-xs mt-1">설정</span>
         </button>
     </nav>
-  </div>
+    <ToastNotification :show="showToast" :message="toastMessage" />
+    </div>
 </template>
